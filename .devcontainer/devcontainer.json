@@ -1,8 +1,8 @@
 {
   "name": "AutoHub",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+ "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": { "moby": false },
     "ghcr.io/devcontainers/features/node:1": { "version": "20" }
   },
   "hostRequirements": { "cpus": 2, "memory": "8gb" },
