@@ -16,8 +16,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     groq_api_key: str = ""
-    groq_text_model: str = "llama-3.3-70b-versatile"
-    groq_vision_model: str = "qwen/qwen3.6-27b"
+    groq_text_model: str = "openai/gpt-oss-20b"
+    groq_vision_model: str = "qwen/qwen3.8-27b"
+
+    # run engine
+    run_mode: str = "queue"      # queue (Redis worker) | inline (inside the API process)
+    llm_timeout_s: float = 30.0
+    llm_max_retries: int = 3     # attempts per LLM call for transient errors (429, 5xx, timeouts)
 
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

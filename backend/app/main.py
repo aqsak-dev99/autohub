@@ -1,13 +1,18 @@
 """App entry point. `lifespan` runs once on startup: create tables, seed automations."""
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
-from app.api import automations, health
+import app.automations  # noqa: F401  (registers automation implementations)
+from app.api import automations, health, runs
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.registry import seed_automations
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -24,7 +29,7 @@ app = FastAPI(
     title="AutoHub",
     description="One hub for AI automations: every run traced step by step, "
                 "with human approval when the AI isn't sure.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -35,5 +40,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/docs")
+
+
 app.include_router(health.router)
 app.include_router(automations.router)
+app.include_router(runs.router)

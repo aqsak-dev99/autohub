@@ -36,6 +36,7 @@ docker compose up --build
 ```
 - API docs: http://localhost:8000/docs
 - Health: http://localhost:8000/health
+- Smoke test the engine: `POST /api/automations/system_check/runs`, then `GET /api/runs/{id}`
 - n8n: http://localhost:5678
 
 Tests (no Docker needed, uses SQLite):
@@ -51,10 +52,14 @@ backend/app/
   config.py      settings from env
   db.py          engine, sessions, table creation
   models.py      Automation, Run, RunStep, Approval, Lead, Document
-  registry.py    the 3 automations + their React Flow graphs
+  registry.py    automation metadata + their React Flow graphs
   schemas.py     API response shapes
-  api/           routes (health, automations, runs)
-backend/tests/   pytest
+  api/           routes (health, automations, runs, trigger)
+  llm/           Groq client: retries, cost, JSON validation + self-repair
+  engine/        run engine: step tracer, executor, queue dispatch
+  automations/   one module per automation (system_check so far)
+backend/worker.py  Redis worker that executes queued runs
+backend/tests/   pytest (fake Groq SDK, no key needed)
 n8n/workflows/   exported n8n workflow JSON
 frontend/        dashboard (Phase 5)
 ```
@@ -64,10 +69,15 @@ frontend/        dashboard (Phase 5)
 - **Enums stored as strings.** Readable in the database and no Postgres enum migrations when a status is added.
 - **Graph stored on the automation.** The backend owns the workflow shape, so the dashboard never hardcodes it.
 - **Health reports each dependency.** Redis down means "degraded" (background jobs pause), not "down".
+- **Queue with graceful fallback.** Webhooks get a run id instantly while a worker does the slow LLM work. If Redis is down, runs execute as API background tasks instead of being lost.
+- **Retry only what's transient.** 429s, 5xx and timeouts back off exponentially with jitter; a 400 is a bug and fails at once. Attempts are recorded per step.
+- **Structured output with self-repair.** Model output is validated against a Pydantic schema; on failure the validation errors are sent back once so the model can correct itself. Every attempt's tokens are billed to the step.
+- **Idempotent execution.** A run only executes from `queued`, so a job delivered twice can't run twice.
+- **Model check before use.** The System Check automation confirms configured model ids exist on the account, since providers retire and gate models.
 
 ## Roadmap
 - [x] Phase 0: Foundation
-- [ ] Phase 1: Run engine (tracing, retries, Groq client, cost)
+- [x] Phase 1: Run engine (tracing, retries, Groq client, cost)
 - [ ] Phase 2: Lead Handler agent
 - [ ] Phase 3: Document Extractor
 - [ ] Phase 4: n8n + Twilio WhatsApp

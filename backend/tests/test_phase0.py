@@ -20,16 +20,17 @@ def test_health_reports_database_ok():
     assert body["status"] in {"ok", "degraded"}
 
 
-def test_three_automations_seeded_with_graphs():
+def test_automations_seeded_with_valid_graphs():
     with TestClient(app) as client:
         slugs = [a["slug"] for a in client.get("/api/automations").json()]
-        assert slugs == ["lead_handler", "doc_extractor", "daily_digest"]
+        assert slugs == ["lead_handler", "doc_extractor", "daily_digest", "system_check"]
 
-        graph = client.get("/api/automations/lead_handler").json()["graph"]
-        node_ids = {n["id"] for n in graph["nodes"]}
-        # every edge must point at real nodes, or React Flow renders a broken graph
-        for edge in graph["edges"]:
-            assert edge["source"] in node_ids and edge["target"] in node_ids
+        for slug in slugs:
+            graph = client.get(f"/api/automations/{slug}").json()["graph"]
+            node_ids = {n["id"] for n in graph["nodes"]}
+            # every edge must point at real nodes, or React Flow renders a broken graph
+            for edge in graph["edges"]:
+                assert edge["source"] in node_ids and edge["target"] in node_ids, (slug, edge)
 
 
 def test_run_with_steps_round_trip():

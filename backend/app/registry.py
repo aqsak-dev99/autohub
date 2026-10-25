@@ -86,6 +86,21 @@ AUTOMATIONS: list[dict] = [
             ],
         },
     },
+    {
+        "slug": "system_check",
+        "name": "System Check",
+        "description": "Verifies the hub end to end: configured Groq models exist, a plain completion "
+                       "works, and structured JSON output validates.",
+        "trigger": "manual",
+        "graph": {
+            "nodes": [
+                _node("models", "Check models available", 0, 0, "trigger"),
+                _node("llm_text", "Plain completion", 0, 100),
+                _node("llm_json", "Structured JSON output", 0, 200),
+            ],
+            "edges": [_edge("models", "llm_text"), _edge("llm_text", "llm_json")],
+        },
+    },
 ]
 
 

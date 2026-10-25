@@ -1,0 +1,21 @@
+{
+  "name": "AutoHub",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": { "moby": false },
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+  },
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "postCreateCommand": "test -f .env || cp .env.example .env; pip install -r backend/requirements.txt",
+  "forwardPorts": [8000, 5678, 5173],
+  "portsAttributes": {
+    "8000": { "label": "API" },
+    "5678": { "label": "n8n" },
+    "5173": { "label": "Dashboard" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-azuretools.vscode-docker"]
+    }
+  }
+}
