@@ -39,6 +39,7 @@ class StepStatus(str, enum.Enum):
     succeeded = "succeeded"
     failed = "failed"
     skipped = "skipped"
+    waiting = "waiting"    # paused on a human decision
 
 
 class ApprovalStatus(str, enum.Enum):
@@ -141,20 +142,43 @@ class Approval(Base):
 
 
 class Lead(Base):
-    """A customer inquiry processed by the lead handler."""
+    """A customer inquiry processed by the lead handler.
+
+    Created the moment a message arrives (so it shows up even while waiting
+    for approval), then enriched as the run moves through its steps.
+    """
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
-    channel: Mapped[str] = mapped_column(String(16))   # whatsapp | email | web
+    channel: Mapped[str] = mapped_column(String(16))   # whatsapp | web_form | web_chat | email
     contact: Mapped[str] = mapped_column(String(128))  # phone or email
     name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     message: Mapped[str] = mapped_column(Text)
-    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)  # pricing | support | order | other
+
+    # from the classify step
+    language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # from the qualify step (LLM extracts the facts, code computes the score)
+    services: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    business_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    monthly_budget_pkr: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    budget_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    timeline: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temperature: Mapped[str | None] = mapped_column(String(16), nullable=True)  # hot | warm | cold | not_a_lead
+    score_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    # reply
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     replied: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[str] = mapped_column(String(24), default="new", index=True)
+    # new | awaiting_approval | replied | rejected | spam
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class Document(Base):

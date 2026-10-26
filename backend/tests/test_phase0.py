@@ -1,16 +1,13 @@
-"""Phase 0 smoke tests. Run with SQLite so they need no Docker:
-    cd backend && DATABASE_URL=sqlite:///./test.db pytest -q
+"""Phase 0 smoke tests. conftest.py points them at SQLite, so they need no Docker:
+    cd backend && pytest -q
 """
-import os
 import uuid
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+from fastapi.testclient import TestClient
 
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.db import SessionLocal  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models import Automation, Run, RunStatus, RunStep, StepStatus  # noqa: E402
+from app.db import SessionLocal
+from app.main import app
+from app.models import Automation, Run, RunStatus, RunStep, StepStatus
 
 
 def test_health_reports_database_ok():

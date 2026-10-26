@@ -62,3 +62,39 @@ class HealthOut(BaseModel):
     database: str
     redis: str
     env: str
+
+
+class LeadOut(ORM):
+    id: int
+    run_id: uuid.UUID | None
+    channel: str
+    contact: str
+    name: str | None
+    message: str
+    language: str | None
+    intent: str | None
+    services: list | None
+    business_type: str | None
+    monthly_budget_pkr: int | None
+    budget_band: str | None
+    timeline: str | None
+    score: int | None
+    temperature: str | None
+    score_reasons: list | None
+    confidence: float | None
+    reply: str | None
+    replied: bool
+    status: str
+    created_at: datetime
+
+
+class ApprovalOut(ORM):
+    id: int
+    run_id: uuid.UUID
+    kind: str
+    reason: str
+    payload: dict
+    final_payload: dict | None
+    status: str
+    created_at: datetime
+    decided_at: datetime | None

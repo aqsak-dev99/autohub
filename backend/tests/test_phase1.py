@@ -1,63 +1,18 @@
 """Phase 1 tests: the LLM client and run engine, using a fake Groq SDK.
 No API key or network needed, so these run in CI too."""
-import os
-from types import SimpleNamespace
+import uuid
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ["RUN_MODE"] = "inline"
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
-
-import app.engine.executor as executor  # noqa: E402
-from app.config import Settings  # noqa: E402
-from app.db import SessionLocal  # noqa: E402
-from app.engine.base import IMPLEMENTATIONS, BaseAutomation, NeedsApproval  # noqa: E402
-from app.llm.client import LLMClient, LLMOutputError  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models import Approval, Run, RunStatus, StepStatus  # noqa: E402
-
-
-# ---------- a fake Groq SDK ----------
-
-class FakeStatusError(Exception):
-    def __init__(self, status_code):
-        super().__init__(f"HTTP {status_code}")
-        self.status_code = status_code
-
-
-class FakeSDK:
-    """Plays back a script: each item is a reply string or an exception to raise."""
-
-    def __init__(self, script, models=("openai/gpt-oss-20b", "qwen/qwen3.8-27b")):
-        self.script = list(script)
-        self.calls = []
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
-        self.models = SimpleNamespace(list=lambda: SimpleNamespace(
-            data=[SimpleNamespace(id=m) for m in models]))
-
-    def _create(self, **kwargs):
-        self.calls.append(kwargs)
-        item = self.script.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=item))],
-            usage=SimpleNamespace(prompt_tokens=100, completion_tokens=20),
-        )
-
-
-def make_llm(script, **kw):
-    settings = Settings(groq_api_key="test", llm_max_retries=3, database_url="sqlite:///./test.db")
-    return LLMClient(settings, sdk=FakeSDK(script, **kw))
-
-
-@pytest.fixture(autouse=True)
-def no_backoff_sleep(monkeypatch):
-    # tenacity would really sleep between retries; make tests instant
-    import tenacity.nap
-    monkeypatch.setattr(tenacity.nap.time, "sleep", lambda s: None)
+import app.engine.executor as executor
+from app.db import SessionLocal
+from app.engine.base import IMPLEMENTATIONS, BaseAutomation, NeedsApproval
+from app.llm.client import LLMOutputError
+from app.main import app
+from app.models import Approval, Run, StepStatus
+from tests.fakes import FakeStatusError, make_llm
 
 
 # ---------- LLM client ----------
@@ -112,7 +67,7 @@ def _new_run(slug: str, payload: dict | None = None) -> str:
 
 def _load(run_id: str) -> Run:
     with SessionLocal() as db:
-        run = db.get(Run, __import__("uuid").UUID(run_id))
+        run = db.get(Run, uuid.UUID(run_id))
         _ = run.steps  # load before session closes
         return run
 
@@ -195,3 +150,23 @@ def test_trigger_endpoint_returns_202_and_unknown_slug_404(client, monkeypatch):
 
 def test_root_redirects_to_docs(client):
     assert client.get("/", follow_redirects=False).headers["location"] == "/docs"
+
+
+class FakeJsonRejected(Exception):
+    """What Groq raises when JSON mode output is invalid, e.g. cut off."""
+    status_code = 400
+    body = {"error": {"code": "json_validate_failed", "failed_generation": '{"intent": "pri'}}
+
+
+def test_provider_json_rejection_is_repaired_not_fatal():
+    llm = make_llm([FakeJsonRejected("Failed to validate JSON"), '{"intent": "pricing", "confidence": 0.9}'])
+    result = llm.complete_json([{"role": "user", "content": "x"}], Intent)
+    assert result.parsed.intent == "pricing" and result.repairs == 1
+    assert "cut off" in llm.sdk.calls[1]["messages"][-1]["content"]
+
+
+def test_ordinary_bad_request_still_fails_fast():
+    llm = make_llm([FakeStatusError(400), "never reached"])
+    with pytest.raises(FakeStatusError):
+        llm.complete_json([{"role": "user", "content": "x"}], Intent)
+    assert len(llm.sdk.calls) == 1

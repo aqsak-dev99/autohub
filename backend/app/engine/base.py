@@ -25,12 +25,19 @@ class BaseAutomation:
     def run(self, ctx: "RunContext", payload: dict) -> dict:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def on_failure(self, ctx: "RunContext", error: Exception) -> None:
+        """Called when a run fails, to tidy up (e.g. mark the lead failed). Optional."""
+
+    def resume(self, ctx: "RunContext", payload: dict, approval) -> dict:
+        """Continue a run after a human decided on its Approval. Optional."""
+        raise NotImplementedError(f"'{self.slug}' can't be resumed")
+
 
 class NeedsApproval(Exception):
     """Raise inside `run` to pause the run for a human.
 
     The engine saves an Approval row and sets the run to `waiting_approval`.
-    Phase 2 adds the endpoint that resumes it after the human decides.
+    POST /api/approvals/{id}/decision resumes it through `resume()`.
     """
 
     def __init__(self, kind: str, reason: str, payload: dict, output: dict | None = None):

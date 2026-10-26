@@ -95,7 +95,7 @@ class RunContext:
             step.output = _jsonable(handle.output)
         except NeedsApproval:
             # pausing for a human is a normal outcome of this step, not a failure
-            step.status = StepStatus.succeeded
+            step.status = StepStatus.waiting
             step.output = _jsonable(handle.output)
             raise
         except Exception as exc:
@@ -104,7 +104,25 @@ class RunContext:
             raise
         finally:
             step.duration_ms = int((time.perf_counter() - started) * 1000)
-            step.finished_at = datetime.now(timezone.utc)
+            # a waiting step isn't finished: finish_waiting_step closes it after the human decides
+            step.finished_at = None if step.status == StepStatus.waiting else datetime.now(timezone.utc)
             self.run.total_tokens += step.prompt_tokens + step.completion_tokens
             self.run.total_cost_usd = round(self.run.total_cost_usd + step.cost_usd, 8)
             self.db.commit()
+
+    def finish_waiting_step(self, node_id: str, output: Any) -> None:
+        """Close the step a run paused on, once the human has decided.
+
+        Its duration becomes the human's response time, which the dashboard
+        shows separately from system latency.
+        """
+        step = next((s for s in self.run.steps if s.node_id == node_id and s.status == StepStatus.waiting), None)
+        if step is None:
+            return
+        now = datetime.now(timezone.utc)
+        started = step.started_at if step.started_at.tzinfo else step.started_at.replace(tzinfo=timezone.utc)
+        step.status = StepStatus.succeeded
+        step.output = {**(step.output or {}), **_jsonable(output)}
+        step.finished_at = now
+        step.duration_ms = int((now - started).total_seconds() * 1000)
+        self.db.commit()

@@ -5,7 +5,7 @@ One hub where AI automations run, every run traced step by step, with a human in
 **Automations**
 | Automation | Trigger | What it does |
 |---|---|---|
-| Lead Handler | WhatsApp / email webhook | Classifies intent, answers from a knowledge base, auto-sends or queues for approval |
+| Lead Handler | WhatsApp / website webhook | Qualifies leads for flowpath (a marketing studio), replies in English, Roman Urdu, Urdu or Arabic from its knowledge base, auto-sends or queues for approval |
 | Document Extractor | File upload | Vision extraction of invoices/receipts → validation → self-correction → human review |
 | Daily Digest | n8n schedule | Morning summary of leads, documents and pending approvals |
 
@@ -37,13 +37,29 @@ docker compose up --build
 - API docs: http://localhost:8000/docs
 - Health: http://localhost:8000/health
 - Smoke test the engine: `POST /api/automations/system_check/runs`, then `GET /api/runs/{id}`
+- Try the Lead Handler with 9 sample leads in 4 languages: `docker compose exec api python scripts/demo_leads.py`
+
+## Lead Handler
+```
+intake → classify → retrieve → qualify → draft → check + route ─┬─ auto ─→ send ─┬→ save lead
+           └─ spam ───────────────────────────────────────────────┤               │
+                                                                  └─ review → approval (approve / edit / reject)
+```
+- **classify** (gpt-oss-20b): intent, language, and an English search query
+- **retrieve**: BM25 over flowpath's site content (`app/knowledge/flowpath.py`)
+- **qualify** (gpt-oss-20b): extracts services, budget, urgency; code scores the lead on flowpath's budget bands
+- **draft** (gpt-oss-120b): reply in the customer's language and style, only from retrieved passages
+- **check + route**: an LLM judge labels each claim (fact, commitment, restatement, courtesy) and whether it's supported; code computes confidence from the facts and commitments only, then applies the rules: unsupported claims, invented prices, review languages, existing clients, unoffered services
+- **approval**: `GET /api/approvals`, `POST /api/approvals/{id}/decision` with `approve`, `edit` or `reject`
+
+Endpoints: `POST /api/leads/inbound` · `GET /api/leads?temperature=hot` · `GET /api/knowledge/search?q=...`
 - n8n: http://localhost:5678
 
-Tests (no Docker needed, uses SQLite):
+Tests (no Docker or API key needed; they use SQLite and a fake Groq SDK):
 ```bash
 cd backend
 pip install -r requirements.txt
-DATABASE_URL=sqlite:///./test.db pytest -q
+pytest -q
 ```
 
 ## Project layout
@@ -57,14 +73,18 @@ backend/app/
   api/           routes (health, automations, runs, trigger)
   llm/           Groq client: retries, cost, JSON validation + self-repair
   engine/        run engine: step tracer, executor, queue dispatch
-  automations/   one module per automation (system_check so far)
+  automations/   one module per automation (lead_handler, lead_rules, system_check)
+  knowledge/     flowpath's content + BM25 search
+  channels.py    outbound replies (dry run until Phase 4)
 backend/worker.py  Redis worker that executes queued runs
+backend/scripts/   demo_leads.py: sample leads in 4 languages
 backend/tests/   pytest (fake Groq SDK, no key needed)
 n8n/workflows/   exported n8n workflow JSON
 frontend/        dashboard (Phase 5)
 ```
 
 ## Design decisions
+Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
 - **Runs and steps as first-class data.** Observability is built into the hub, not bolted on: cost, latency and failures are visible per step for every automation.
 - **Enums stored as strings.** Readable in the database and no Postgres enum migrations when a status is added.
 - **Graph stored on the automation.** The backend owns the workflow shape, so the dashboard never hardcodes it.
@@ -78,7 +98,7 @@ frontend/        dashboard (Phase 5)
 ## Roadmap
 - [x] Phase 0: Foundation
 - [x] Phase 1: Run engine (tracing, retries, Groq client, cost)
-- [ ] Phase 2: Lead Handler agent
+- [x] Phase 2: Lead Handler agent
 - [ ] Phase 3: Document Extractor
 - [ ] Phase 4: n8n + Twilio WhatsApp
 - [ ] Phase 5: Dashboard + React Flow run visualizer
