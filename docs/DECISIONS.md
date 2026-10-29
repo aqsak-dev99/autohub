@@ -152,9 +152,58 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Decision:** The judge gets 3,000 output tokens (was 1,200), and Groq's `json_validate_failed` 400 is treated as a repairable bad output, not a bad request: the call is retried once asking for a complete, shorter answer. Other 400s still fail immediately. The "how we work" passage is now pinned too, since drafts mention the audit.
 **Why:** From the fourth real run. Raising the judge's reasoning effort (decision 32) made it think longer, and on these models reasoning tokens count against the same limit as the answer. On two long replies the JSON was cut off mid-way, Groq rejected it, and the runs failed. A small, fixable cause that looked like a crash; now it's one extra call at worst.
 
+## 34. Phase 4 before Phase 3
+**Decision:** WhatsApp (originally Phase 4) was built before the Document Extractor.
+**Why:** The schedule slipped by three days. Real WhatsApp delivery turns the strongest feature, the Lead Handler, from a dry run into something that replies to a phone, while the extractor was the most standalone piece and the safest to slim down if time ran short.
+
+## 35. Answer Twilio at once, reply later
+**Decision:** The webhook checks the signature, records the message, queues a Lead Handler run and returns empty TwiML immediately. The reply is sent later by the worker through Twilio's REST API.
+**Why:** Twilio gives a webhook 15 seconds; four LLM calls can take longer. Replying in the webhook response would make slow runs time out and get retried.
+
+## 36. Verify Twilio's signature, behind a proxy
+**Decision:** Every webhook must carry a valid `X-Twilio-Signature` (HMAC-SHA1 of the URL and parameters with the auth token), compared in constant time. The URL used is `PUBLIC_BASE_URL`, else the proxy's forwarded host, because behind Codespaces or Render the app sees an internal address, not the one Twilio signed. Without a token the webhook refuses to run (503) rather than accept unverified messages.
+**Why:** A public webhook URL is easy to find. Without the check anyone could post fake customer messages and spend the AI budget, or make AutoHub message any number. The implementation was checked against the example in Twilio's documentation.
+
+## 37. Claim the message id before doing anything
+**Decision:** Each Twilio `MessageSid` is inserted into `inbound_messages` (unique) before a run is created; a second delivery fails that insert and is acknowledged without a run.
+**Why:** Twilio retries webhooks, and a duplicate would mean a second lead and a second reply to the customer. Claiming first, instead of checking first, also holds when two deliveries arrive at the same instant.
+
+## 38. Three locks on sending
+**Decision:** A real WhatsApp message goes out only when `SEND_MODE=live`, Twilio credentials are set, and the number is on `LIVE_SEND_ALLOWLIST` (if one is set). Anything else is a recorded dry run with the reason. A Twilio error fails the step, so the run shows as failed and can be retried.
+**Why:** A system that messages people should be hard to set off by accident: the demo script's made-up numbers and tests never reach a real phone. Plain `httpx` is used instead of the Twilio SDK, since two small HTTP calls don't justify a dependency and are easy to fake in tests.
+
+## 39. Digest numbers come from code, not the model
+**Decision:** The daily digest's counts, hot leads and costs are built by SQL and a template. The LLM writes one line on what to do first, and is told not to add numbers. If that call fails the digest goes out without the line; if WhatsApp delivery fails it's recorded on the run instead of failing it.
+**Why:** A summary with a wrong number is worse than no summary. The parts that must be right are deterministic, and the part that can be wrong is optional. n8n owns the schedule and watches the outcome (it flags a failed run), which is the job it's best at.
+
+## 40. Meta's Cloud API as the live provider, Twilio kept behind the same interface
+**Decision:** `WHATSAPP_PROVIDER` picks Meta's WhatsApp Cloud API (default) or Twilio. Both share `send_reply`, the allowlist, the dry-run rules and the duplicate protection; each has its own webhook and signature check (Meta: HMAC-SHA256 of the raw body with the app secret, plus the verify-token handshake).
+**Why:** Twilio's account verification rejected Pakistani phone numbers, by SMS and by voice call. Meta's API is WhatsApp's own, verifies test recipients through WhatsApp rather than SMS, and is what businesses in Pakistan use in production. Because sending and receiving were already isolated in one module, switching provider was a contained change rather than a rewrite. Meta's signature check was confirmed against a signature produced independently with `openssl`.
+
+## 41. Small startup schema patches until Alembic
+**Decision:** `init_db` runs a short list of idempotent `ALTER` statements after `create_all` on Postgres.
+**Why:** Meta's message ids are longer than the 64 characters first allowed for Twilio's. `create_all` never alters an existing table, and resetting the database again would wipe test data. A patch list that's safe to run on every start fixes it now; Alembic replaces it before deployment.
+
+## 42. Email as the always-on public channel
+**Decision:** The Lead Handler also works over email: Gmail SMTP sends replies (threaded with `In-Reply-To` / `References` so they appear inside the customer's conversation), and an IMAP poll reads new enquiries. flowpath's contact-form leads get email replies.
+**Why:** Meta's test number can only message five pre-registered numbers, so an interviewer couldn't try the WhatsApp demo themselves. Anyone can email an address. A Gmail app password also doesn't expire, while Meta's quick token lasts a day. WhatsApp stays in the project for the recorded demo; email is what stays live. Email is also realistic for an agency: website enquiries expect an email back.
+
+## 43. Never answer a machine
+**Decision:** The inbox poll skips mail from no-reply addresses and mail daemons, auto-replies (`Auto-Submitted`, `X-Autoreply`), bulk and list mail (`Precedence`, `List-Id`, `List-Unsubscribe`), and AutoHub's own address. Each skip is reported with its reason.
+**Why:** The classic failure of email automation is two bots replying to each other until a quota runs out, or a bounce being "answered". These headers are the standard signals (RFC 3834 for auto-replies); checking them costs nothing.
+
+## 44. Read safely: recent, unread, peeked, claimed
+**Decision:** Only unread mail from the last day is searched (`EMAIL_POLL_SINCE_DAYS`), at most 20 per poll. Messages are fetched with `BODY.PEEK` and marked read only after they're handled; one that fails stays unread for the next poll. Each is claimed by a hash of its `Message-ID` before a run starts. Quoted history is stripped so the model sees only the new text.
+**Why:** Connecting a mailbox must never reply to its old backlog. Peeking means a crash loses nothing, and the Message-ID claim means two overlapping polls (n8n's minute timer and a manual run) can't answer one email twice.
+
+## 45. Polling, scheduled by n8n, instead of push
+**Decision:** n8n calls `POST /api/email/poll` every minute; `scripts/poll_inbox.py` does the same by hand.
+**Why:** Gmail push notifications need a Google Cloud project with Pub/Sub. For a demo, a one-minute delay is fine, and polling has no extra infrastructure. It also gives n8n a second real job alongside the daily digest: n8n owns the schedules, Python owns the logic.
+
 ---
 
 ## Known trade-offs to revisit
 - **`create_all` instead of migrations.** Fine while the schema is changing daily (Phase 2 needed a one-time database reset to add lead columns); Alembic should be added before deploying so schema changes are versioned.
-- **Partial authentication.** Lead intake can require an `X-AutoHub-Key` header (`INBOUND_API_KEY`), compared in constant time; the dashboard and approval endpoints are still open and need auth before public deployment.
+- **Partial authentication.** Lead intake can require an `X-AutoHub-Key` header (`INBOUND_API_KEY`) and the WhatsApp webhook requires Twilio's signature; the dashboard and approval endpoints are still open and need auth before public deployment. Making the codespace port public for Twilio exposes them meanwhile.
+- **WhatsApp test-number limits.** Free-form replies and the digest only reach numbers that messaged the business in the last 24 hours, and a test number can only message its registered recipients. Production needs a verified business number and approved message templates. The temporary Meta access token expires within about a day; a system-user token removes that.
 - **Prices hard-coded.** The pricing table must be updated when Groq changes rates; unknown models are flagged as unpriced rather than shown as free.

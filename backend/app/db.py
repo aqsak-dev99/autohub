@@ -40,3 +40,15 @@ def init_db() -> None:
         with engine.begin() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=engine)
+    if settings.is_postgres:
+        with engine.begin() as conn:
+            for statement in SCHEMA_PATCHES:
+                conn.execute(text(statement))
+
+
+# create_all never changes a table that already exists. Until Alembic arrives (before deploy),
+# column changes to existing tables go here. Each must be safe to run on every start.
+SCHEMA_PATCHES = [
+    # Meta's message ids (wamid...) are longer than Twilio's 34-character ids
+    "ALTER TABLE inbound_messages ALTER COLUMN external_id TYPE varchar(128)",
+]

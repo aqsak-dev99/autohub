@@ -125,7 +125,7 @@ def test_needs_approval_pauses_run_and_creates_approval(client):
 
 
 def test_unimplemented_automation_fails_cleanly(client):
-    run_id = _new_run("daily_digest")
+    run_id = _new_run("doc_extractor")  # registered, but no code yet (Phase 3)
     assert executor.execute_run(run_id, llm=make_llm([])) == "failed"
     assert "no implementation" in _load(run_id).error
 

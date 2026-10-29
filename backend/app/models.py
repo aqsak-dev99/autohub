@@ -194,3 +194,19 @@ class Document(Base):
     validation_errors: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_valid: Mapped[bool | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class InboundMessage(Base):
+    """Every message received from a provider, keyed by the provider's own id.
+
+    Twilio retries a webhook if it doesn't get a quick 200, so the same
+    WhatsApp message can arrive twice. The unique external_id makes the
+    second delivery a no-op instead of a second lead and a second reply.
+    """
+    __tablename__ = "inbound_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(16))           # meta | twilio
+    external_id: Mapped[str] = mapped_column(String(128), unique=True)  # Meta wamid / Twilio MessageSid
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

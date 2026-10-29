@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.channels import send_reply
+from app.channels import reply_subject, send_reply
 from app.engine.base import BaseAutomation, NeedsApproval, register
 from app.engine.context import RunContext
 from app.knowledge import get_kb
@@ -42,6 +42,9 @@ class LeadIn(BaseModel):
     contact: str = Field(min_length=1, max_length=128)
     name: str | None = Field(default=None, max_length=128)
     message: str = Field(min_length=1, max_length=4000)
+    # email only: keep the reply in the customer's thread
+    subject: str | None = Field(default=None, max_length=300)
+    in_reply_to: str | None = Field(default=None, max_length=500)
 
 
 # ---------- what each LLM step must return ----------
@@ -324,7 +327,14 @@ class LeadHandler(BaseAutomation):
     @staticmethod
     def _send(ctx: RunContext, channel: str, contact: str, reply: str) -> dict:
         with ctx.step("send", {"channel": channel}) as s:
-            s.output = send_reply(channel, contact, reply)
+            settings = ctx.llm.settings
+            payload = ctx.run.input or {}
+            # dry run, a real send, or a DeliveryError that fails the step (and the run) visibly
+            s.output = send_reply(
+                channel, contact, reply, settings,
+                subject=reply_subject(payload.get("subject"), f"Your enquiry to {settings.email_from_name}"),
+                in_reply_to=payload.get("in_reply_to"),
+            )
             return s.output
 
     @staticmethod

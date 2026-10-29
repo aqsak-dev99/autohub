@@ -12,3 +12,4 @@ tenacity==9.2.*
 httpx==0.27.*
 pytest==8.*
 groq==0.*
+tzdata

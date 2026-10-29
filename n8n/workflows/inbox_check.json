@@ -1,0 +1,68 @@
+{
+  "name": "AutoHub inbox check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "02b6d42e-7b79-4fb7-8190-61a13d73c86c",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AUTOHUB_API_URL }}/api/email/poll",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AutoHub-Key",
+              "value": "={{ $env.AUTOHUB_API_KEY || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a7215573-e880-4aab-9e93-5d011645f334",
+      "name": "Check inbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Check inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Karachi",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}

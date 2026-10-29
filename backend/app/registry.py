@@ -75,7 +75,8 @@ AUTOMATIONS: list[dict] = [
     {
         "slug": "daily_digest",
         "name": "Daily Digest",
-        "description": "n8n-scheduled morning summary of yesterday's leads, documents and pending approvals.",
+        "description": "n8n-scheduled morning WhatsApp summary: new leads, hot leads, replies waiting for "
+                       "review, failed runs and AI cost. Code builds the numbers; the AI writes one advice line.",
         "trigger": "schedule",
         "graph": {
             "nodes": [

@@ -1,0 +1,198 @@
+{
+  "name": "AutoHub daily digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "0dc906dd-266c-4f13-9bab-9c487498eb33",
+      "name": "Every day at 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AUTOHUB_API_URL }}/api/automations/daily_digest/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AutoHub-Key",
+              "value": "={{ $env.AUTOHUB_API_KEY || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"input\": {\"hours\": 24, \"source\": \"n8n\"}\n}",
+        "options": {}
+      },
+      "id": "18146887-7666-46ba-955c-99efc610fc83",
+      "name": "Start digest run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 45
+      },
+      "id": "1e151e03-8770-4ec8-8c6d-fb3c9482be91",
+      "name": "Wait 45 seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "webhookId": "46331db7-e6d4-4940-8ad8-91c98d6b8067"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.AUTOHUB_API_URL }}/api/runs/{{ $('Start digest run').item.json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AutoHub-Key",
+              "value": "={{ $env.AUTOHUB_API_KEY || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e183d24b-ba5a-4dcf-ad92-d56674db38de",
+      "name": "Check the run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "55d76e20-598b-4ac5-9591-a417e972be5f",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ea47fc85-3765-4fce-85d3-ae97f0057906",
+      "name": "Did it fail?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'Daily digest run ' + $json.id + ' ended as ' + $json.status + ': ' + ($json.error || 'no error text') }}"
+      },
+      "id": "dcf1578d-b936-41a9-aa8b-6b4040c3aecc",
+      "name": "Flag the failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        -100
+      ]
+    }
+  ],
+  "connections": {
+    "Every day at 9am": {
+      "main": [
+        [
+          {
+            "node": "Start digest run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start digest run": {
+      "main": [
+        [
+          {
+            "node": "Wait 45 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 45 seconds": {
+      "main": [
+        [
+          {
+            "node": "Check the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check the run": {
+      "main": [
+        [
+          {
+            "node": "Did it fail?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Did it fail?": {
+      "main": [
+        [
+          {
+            "node": "Flag the failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Karachi"
+  },
+  "pinData": {}
+}
