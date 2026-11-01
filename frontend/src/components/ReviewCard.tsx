@@ -41,6 +41,8 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
   const pending = approval.status === 'pending'
   const q = p.qualification
   const goesTo = p.channel === 'web_chat' ? 'shown in the website chat' : `emailed to ${p.contact}`
+  const fu = approval.kind === 'follow_up' ? p.follow_up : undefined
+  const conversationRun = fu?.conversation_run_id ?? approval.run_id
 
   return (
     <div className="card pad stack" style={{ gap: 12, borderColor: compact ? 'rgba(101, 167, 194, 0.45)' : undefined, boxShadow: compact ? '0 0 40px rgba(101, 167, 194, 0.12)' : undefined }}>
@@ -53,6 +55,12 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
         {!compact && <TempChip temperature={p.temperature} score={p.score} />}
       </div>
 
+      {fu && (
+        <div className="notice info">
+          <b>Follow-up.</b> {p.name || 'They'} hasn’t written back{fu.days_quiet ? ` in ${Math.floor(fu.days_quiet)} days` : ''} since your reply. Your assistant drafted one gentle reminder; they won’t get another.
+        </div>
+      )}
+
       <div className="notice stack" style={{ gap: 4 }}>
         {p.reasons.map((r) => <span key={r}>{friendlyReason(r)}</span>)}
       </div>
@@ -61,6 +69,12 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
         <h3 style={{ marginBottom: 6 }}>They wrote</h3>
         <div dir="auto" style={{ whiteSpace: 'pre-wrap', fontSize: 14.5 }}>{p.message}</div>
         {p.translation?.message_en && <div className="translation"><b>In English:</b> {p.translation.message_en}</div>}
+        {fu?.previous_reply && !compact && (
+          <>
+            <h3 style={{ margin: '12px 0 6px' }}>You replied</h3>
+            <div dir="auto" className="faint" style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{fu.previous_reply}</div>
+          </>
+        )}
         {!compact && (
           <div className="chips" style={{ marginTop: 10 }}>
             {wants({ services: q.services, intent: p.intent }) !== '—' && <span className="tag">Wants: {wants({ services: q.services, intent: p.intent })}</span>}
@@ -72,7 +86,7 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
 
       <div className="reply-box">
         <div className="label">
-          {pending ? "YOUR ASSISTANT'S REPLY" : 'THE REPLY'}
+          {fu ? (pending ? "YOUR ASSISTANT'S FOLLOW-UP" : 'THE FOLLOW-UP') : pending ? "YOUR ASSISTANT'S REPLY" : 'THE REPLY'}
         </div>
         {pending && editing && !locked ? (
           <textarea className="field" rows={compact ? 5 : 7} dir="auto" value={reply} onChange={(e) => setReply(e.target.value)} aria-label="Reply" />
@@ -126,14 +140,14 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
               <button className="btn primary" style={{ flex: 1 }} disabled={decide.isPending} onClick={() => decide.mutate('approve')}>Approve &amp; send</button>
             )}
             {!editing && <button className="btn" onClick={() => setEditing(true)}>Edit</button>}
-            <button className="btn danger" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>Don't reply</button>
+            <button className="btn danger" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>{fu ? 'Skip the follow-up' : "Don't reply"}</button>
           </div>
           <span className="faint">It will be {goesTo}.</span>
         </>
       ) : (
         <span className="faint"><StatusChip status={approval.status} /> {ago(approval.decided_at)}</span>
       )}
-      {compact && <Link to={`/conversations/${approval.run_id}`} className="faint">See how it was handled →</Link>}
+      {compact && <Link to={`/conversations/${conversationRun}`} className="faint">{fu ? 'See the conversation →' : 'See how it was handled →'}</Link>}
     </div>
   )
 }

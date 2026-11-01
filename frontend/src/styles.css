@@ -470,3 +470,13 @@ details.raw pre { margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .splash *, .splash .ring { animation-duration: 0.01s !important; animation-delay: 0s !important; }
 }
+
+/* follow-up in the chat: a quiet divider marking the days that passed */
+.day-divider { display: flex; align-items: center; gap: 10px; margin: 6px 0; color: var(--faint, #65A7C2); font-size: 12px; }
+.day-divider::before, .day-divider::after { content: ''; flex: 1; height: 1px; background: rgba(101, 167, 194, 0.2); }
+
+/* Home: today's top three tasks (the same list as the morning digest) */
+.today-list { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 14px; }
+.today-list li::marker { color: var(--muted); font-weight: 600; }
+.today-list a { color: inherit; text-decoration: none; }
+.today-list a:hover b { text-decoration: underline; text-underline-offset: 3px; }

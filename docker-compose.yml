@@ -1,7 +1,7 @@
 # AutoHub local stack: run everything with `docker compose up --build`
 services:
   db:
-    image: pgvector/pgvector:pg16          # Postgres with the pgvector extension built in
+    image: postgres:16                     # plain Postgres (pgvector was planned, never needed: decision 70)
     environment:
       POSTGRES_USER: autohub
       POSTGRES_PASSWORD: autohub

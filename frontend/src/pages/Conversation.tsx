@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, type Approval, type Lead, type RunDetail, type Step } from '../api'
+import { api, type Approval, type FollowUp, type Lead, type RunDetail, type Step } from '../api'
 import { CHECKED_KINDS, type Claim } from '../components/ReviewCard'
 import { FlowGraph } from '../components/FlowGraph'
 import { Avatar, ErrorBox } from '../components/ui'
@@ -171,7 +171,25 @@ function techLine(steps: Step[]): string {
   }).join('\n')
 }
 
-function Chat({ run, lead, approval, showReply }: { run: RunDetail; lead: Lead | null; approval: Approval | null; showReply: boolean }) {
+function FollowUpBubble({ followUp, lead }: { followUp: FollowUp; lead: Lead | null }) {
+  if (!followUp.reply) return null
+  const when = lead?.followed_up_at ?? followUp.created_at
+  const day = parseDate(when).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const sent = followUp.status === 'succeeded' && !!lead?.followed_up_at
+  const skipped = followUp.approval?.status === 'rejected'
+  const meta = sent ? `${day} · follow-up${followUp.delivery_mode === 'dry_run' ? ', test mode: not emailed' : followUp.approval ? ', sent after your OK' : ', sent by your assistant'}`
+    : skipped ? 'Follow-up not sent: you skipped it'
+    : followUp.status === 'waiting_approval' ? 'Follow-up draft, waiting for your OK'
+    : followUp.status === 'failed' ? 'Follow-up failed to send' : 'Follow-up being written…'
+  return (
+    <>
+      <div className="day-divider"><span>{day} · they went quiet, so your assistant followed up</span></div>
+      <div className={`bubble out ${sent ? '' : 'draft'}`} dir="auto">{followUp.reply}<div className="meta">{meta}</div></div>
+    </>
+  )
+}
+
+function Chat({ run, lead, approval, showReply, followUp }: { run: RunDetail; lead: Lead | null; approval: Approval | null; showReply: boolean; followUp?: FollowUp | null }) {
   const name = String(run.input.name ?? '') || String(run.input.contact)
   const channel = String(run.input.channel ?? '')
   // after an automatic fix, the fixed reply is the one that counts
@@ -204,6 +222,7 @@ function Chat({ run, lead, approval, showReply }: { run: RunDetail; lead: Lead |
       <div className="bubble in" dir="auto">{String(run.input.message ?? '')}<div className="meta">{time(run.created_at)}</div></div>
       {(active || !showReply) && !spam && <div className="typing">Your assistant is working on a reply<i /><i /><i /></div>}
       {replyBubble}
+      {showReply && followUp && <FollowUpBubble followUp={followUp} lead={lead} />}
       {spam && showReply && <div className="faint" style={{ textAlign: 'center' }}>No reply: this was spam.</div>}
     </div>
   )
@@ -270,7 +289,7 @@ export default function Conversation() {
       <div className="xray-grid">
         <div className="stack" style={{ gap: 10, minWidth: 0 }}>
           <h3>The conversation</h3>
-          <Chat run={r} lead={lead} approval={approval} showReply={replyRevealed} />
+          <Chat run={r} lead={lead} approval={approval} showReply={replyRevealed} followUp={convo.data?.follow_up} />
         </div>
 
         <div className="stack" style={{ gap: 10, minWidth: 0 }}>

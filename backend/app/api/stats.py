@@ -28,7 +28,8 @@ def _since(db: Session, days: float) -> datetime:
 def _aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    # Postgres returns times in its own time zone setting; bucket every day in UTC
+    return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 @router.get("/overview")

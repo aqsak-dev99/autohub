@@ -10,11 +10,12 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import app.automations  # noqa: F401  (registers automation implementations)
-from app.api import auth, automations, digest, email, forms, health, leads, rules, runs, stats
+from app.api import auth, automations, digest, email, follow_ups, forms, health, leads, rules, runs, stats
 from app.auth import current_role
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.demo import seed_if_empty
+from app.engine.executor import recover_interrupted
 from app.registry import seed_automations
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
     init_db()
     with SessionLocal() as db:
         seed_automations(db)
+        recover_interrupted(db)  # runs a previous process left half done
     seed_if_empty(SessionLocal)  # only when DEMO_SEED is on (the public demo)
     yield
 
@@ -35,7 +37,7 @@ app = FastAPI(
     title="AutoHub",
     description="One hub for AI automations: every run traced step by step, "
                 "with human approval when the AI isn't sure.",
-    version="0.7.0",
+    version="0.8.0",
     lifespan=lifespan,
 )
 
@@ -56,7 +58,7 @@ app.include_router(auth.router)
 app.include_router(forms.router)
 # everything else needs a login (or the X-AutoHub-Key for n8n and scripts)
 login = [Depends(current_role)]
-for module in (automations, runs, leads, digest, email, stats, rules):
+for module in (automations, runs, leads, digest, email, follow_ups, stats, rules):
     app.include_router(module.router, dependencies=login)
 
 

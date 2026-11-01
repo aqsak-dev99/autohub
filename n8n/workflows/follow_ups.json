@@ -1,0 +1,68 @@
+{
+  "name": "AutoHub follow-up scan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "id": "5c1d2e7a-3f4b-4a8e-9b10-2f6e7d8c9a01",
+      "name": "Every day at 10am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AUTOHUB_API_URL }}/api/follow-ups/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-AutoHub-Key",
+              "value": "={{ $env.AUTOHUB_API_KEY || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8e2f4a6b-1c3d-4e5f-a7b8-9c0d1e2f3a4b",
+      "name": "Scan for quiet leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every day at 10am": {
+      "main": [
+        [
+          {
+            "node": "Scan for quiet leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Karachi",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {}
+}

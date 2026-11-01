@@ -167,9 +167,23 @@ CONVERSATIONS = [
      [_classify(intent="spam", asks_price=False)], 2.8, None),
 ]
 
+# Follow-up Nudge samples: (contact, AI answers, days after our reply). Omar's goes out on its own;
+# Nida's draft promises a start date the site doesn't back up, so it waits in "Needs you".
+FOLLOW_UPS = [
+    ("omar@sabzhomes.pk",
+     [_draft("Hi Omar, just checking in on Google ads for your new project. If it helps, we can walk you through how "
+             "the audit works on a quick 15-minute call this week. Team flowpath"),
+      _judge("The audit is the first step")], 2.0),
+    ("nida@bloomcafe.pk",
+     [_draft("Hi Nida, hope the cafe is off to a great start! We could start your Instagram content as soon as next "
+             "week. Would a 15-minute call suit you? Team flowpath"),
+      _judge(bad=("We could start as soon as next week",))], 2.5),
+]
+
 # typical time each step takes, so the heatmap looks like real traffic
 STEP_MS = {"intake": (8, 25), "classify": (340, 560), "retrieve": (40, 120), "qualify": (420, 680), "draft": (900, 1600),
-           "score": (520, 950), "revise": (1100, 1800), "translate": (450, 850), "send": (150, 420), "save_lead": (8, 30)}
+           "score": (520, 950), "revise": (1100, 1800), "translate": (450, 850), "send": (150, 420), "save_lead": (8, 30),
+           "pick": (10, 40), "save": (8, 30)}
 
 
 def seed_demo(db_factory, reset: bool = False) -> int:
@@ -194,7 +208,52 @@ def seed_demo(db_factory, reset: bool = False) -> int:
             _decide(db_factory, run_id, *decision, settings=settings)
         _backdate(db_factory, run_id, now - timedelta(days=days_ago))
         added += 1
+    _seed_follow_ups(db_factory, settings)
+    _seed_digest(db_factory, settings)
     return added
+
+
+def _seed_digest(db_factory, settings) -> None:
+    """This morning's digest, so the demo shows one: the AI's answer is written from today's real tasks."""
+    from app.automations.daily_digest import todo_candidates
+
+    with db_factory() as db:
+        tasks = todo_candidates(db)
+        run_id = executor.create_run(db, "daily_digest", {"hours": 24, "source": "n8n"}).id
+    def why(task: dict) -> str:
+        if task["id"].startswith("call:"):
+            return "They asked to talk; call while they're keen."
+        if "follow-up" in task["text"]:
+            return "A short nudge keeps a warm lead from going cold."
+        if "hot" in task["detail"]:
+            return "A hot lead is waiting on you."
+        return "A customer has been waiting over a day."
+    answer = {"items": [{"id": t["id"], "why": why(t)} for t in tasks[:3]]}
+    executor.execute_run(run_id, llm=LLMClient(settings, sdk=_Scripted([answer] if len(tasks) > 1 else [])))
+    morning = datetime.now(timezone.utc).replace(hour=4, minute=0, second=0, microsecond=0)  # 9 am in Lahore
+    _backdate(db_factory, run_id, min(morning, datetime.now(timezone.utc) - timedelta(minutes=5)))
+
+
+def _seed_follow_ups(db_factory, settings) -> None:
+    """Run the real Follow-up Nudge on two quiet sample leads, claimed exactly as the daily scan would."""
+    for contact, answers, days_after in FOLLOW_UPS:
+        with db_factory() as db:
+            lead = db.query(Lead).filter_by(contact=contact).one_or_none()
+            if lead is None or lead.replied_at is None:
+                continue
+            run_id = executor.create_run(db, "follow_up", {"lead_id": lead.id}).id
+            db.add(InboundMessage(provider="follow_up", external_id=f"follow_up:{lead.id}", run_id=run_id))
+            db.commit()
+            lead_id, replied_at = lead.id, lead.replied_at
+        executor.execute_run(run_id, llm=LLMClient(settings, sdk=_Scripted(answers)))
+        replied_at = replied_at if replied_at.tzinfo else replied_at.replace(tzinfo=timezone.utc)
+        when = replied_at + timedelta(days=days_after)
+        _backdate(db_factory, run_id, when)
+        with db_factory() as db:
+            lead = db.get(Lead, lead_id)
+            if lead.followed_up_at:
+                lead.followed_up_at = when + timedelta(seconds=5)
+            db.commit()
 
 
 def _decide(db_factory, run_id, action: str, reply: str | None, settings) -> None:
@@ -233,6 +292,8 @@ def _backdate(db_factory, run_id, when: datetime) -> None:
             run.finished_at = t
         for lead in db.query(Lead).filter_by(run_id=run_id):
             lead.created_at = lead.updated_at = when
+            if lead.replied_at:
+                lead.replied_at = t  # when the reply step finished
         for approval in db.query(Approval).filter_by(run_id=run_id):
             approval.created_at = when + timedelta(seconds=5)
             if approval.decided_at:

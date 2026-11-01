@@ -80,6 +80,8 @@ export type Approval = {
     }
     passages: Passage[]
     translation?: { message_en: string; reply_en: string } | null
+    // only on follow-ups (kind 'follow_up'): the earlier reply the customer didn't answer
+    follow_up?: { days_quiet: number | null; previous_reply: string | null; conversation_run_id: string | null }
   }
 }
 
@@ -103,6 +105,9 @@ export type Lead = {
   confidence: number | null
   reply: string | null
   replied: boolean
+  replied_at?: string | null
+  followed_up_at?: string | null
+  follow_up_reply?: string | null
   status: string
   created_at: string
 }
@@ -159,7 +164,10 @@ export type RulesPreview = {
   would_ask_you: { name: string; language: string | null; run_id: string; reasons: string[] }[]
 }
 
-export type Conversation = { lead: Lead | null; approval: Approval | null }
+/** One of today's tasks, built by code from the database (the digest's "Today" list). */
+export type TodoTask = { id: string; text: string; detail: string; why?: string | null; approval_id?: number; run_id?: string | null }
+export type FollowUp = { run_id: string; status: string; reply: string | null; delivery_mode?: string | null; approval: Approval | null; created_at: string }
+export type Conversation = { lead: Lead | null; approval: Approval | null; follow_up?: FollowUp | null }
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -211,6 +219,7 @@ export const api = {
   testMessage: (message: string, name?: string) =>
     request<{ run_id: string }>('/api/test-message', { method: 'POST', body: JSON.stringify({ message, name }) }),
   conversation: (runId: string) => request<Conversation>(`/api/conversations/${runId}`),
+  today: () => request<{ todo: TodoTask[] }>('/api/digest/preview'),
   live: () => request<Live>('/api/stats/live'),
   rules: () => request<Rules>('/api/rules'),
   saveRules: (rules: Rules) => request<Rules>('/api/rules', { method: 'PUT', body: JSON.stringify(rules) }),

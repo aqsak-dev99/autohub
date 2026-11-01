@@ -17,11 +17,12 @@ from sqlalchemy.orm import Session
 from app.auth import current_role
 from app.automations.lead_handler import LeadIn, edit_similarity
 from app.config import get_settings
+from app.ratelimit import client_ip
 from app.db import get_db
 from app.engine.dispatch import dispatch, dispatch_resume
-from app.engine.executor import create_run
+from app.engine.executor import claim, create_run
 from app.knowledge import get_kb
-from app.models import Approval, ApprovalStatus, Lead, Run
+from app.models import Approval, ApprovalStatus, InboundMessage, Lead, Run
 from app.schemas import ApprovalOut, LeadOut
 
 router = APIRouter(prefix="/api", tags=["leads"])
@@ -95,20 +96,23 @@ def decide(approval_id: int, body: DecisionIn, background: BackgroundTasks, db: 
         # demo visitors can finish the loop on their own test message, not on anyone else's
         raise HTTPException(403, "Demo visitors can approve replies to their own test messages. Try it on Home!")
     if approval.status != ApprovalStatus.pending:
-        # stops a double-click from sending the reply twice
         raise HTTPException(409, f"Already decided: {approval.status.value}")
 
     draft = approval.payload.get("reply", "")
     if body.action == "reject":
-        approval.status = ApprovalStatus.rejected
-        approval.final_payload = {"note": body.note}
+        status, final_payload = ApprovalStatus.rejected, {"note": body.note}
     else:
         final = body.reply.strip() if body.action == "edit" else draft
         changed = body.action == "edit" and final != draft.strip()
-        approval.status = ApprovalStatus.edited if changed else ApprovalStatus.approved
-        approval.final_payload = {"reply": final, "similarity": edit_similarity(draft, final), "note": body.note}
-    approval.decided_at = datetime.now(timezone.utc)
-    db.commit()
+        status = ApprovalStatus.edited if changed else ApprovalStatus.approved
+        final_payload = {"reply": final, "similarity": edit_similarity(draft, final), "note": body.note}
+    # one conditional UPDATE: two clicks (or two tabs) arriving together can't both decide,
+    # so the reply can't be sent twice. The check above only gives a nicer message.
+    if not claim(db, Approval, approval_id, ApprovalStatus.pending, status=status,
+                 final_payload=final_payload, decided_at=datetime.now(timezone.utc)):
+        db.refresh(approval)
+        raise HTTPException(409, f"Already decided: {approval.status.value}")
+    db.refresh(approval)
 
     dispatch_resume(approval.run_id, approval.id, background)
     return approval
@@ -125,9 +129,19 @@ def search_knowledge(q: str = Query(..., min_length=1), limit: int = Query(3, le
     }
 
 
+class FollowUpOut(BaseModel):
+    run_id: uuid.UUID
+    status: str                        # the run's: queued | running | waiting_approval | succeeded | failed
+    reply: str | None                  # sent, or the draft waiting for the owner
+    delivery_mode: str | None = None   # live | dry_run, once sent
+    approval: ApprovalOut | None
+    created_at: datetime
+
+
 class ConversationOut(BaseModel):
     lead: LeadOut | None
     approval: ApprovalOut | None
+    follow_up: FollowUpOut | None = None
 
 
 @router.get("/conversations/{run_id}", response_model=ConversationOut)
@@ -135,7 +149,20 @@ def conversation(run_id: uuid.UUID, db: Session = Depends(get_db)):
     """The lead and (if any) the approval behind one Lead Handler run: the X-ray page's extra data."""
     lead = db.scalar(select(Lead).where(Lead.run_id == run_id))
     approval = db.scalar(select(Approval).where(Approval.run_id == run_id).order_by(Approval.created_at.desc()))
-    return ConversationOut(lead=lead, approval=approval)
+    follow_up = None
+    if lead is not None:
+        # the Follow-up Nudge run for this lead, if one was started (claimed as follow_up:<lead id>)
+        claim_row = db.scalar(select(InboundMessage).where(InboundMessage.external_id == f"follow_up:{lead.id}"))
+        fu_run = db.get(Run, claim_row.run_id) if claim_row and claim_row.run_id else None
+        if fu_run is not None:
+            fu_approval = db.scalar(select(Approval).where(Approval.run_id == fu_run.id))
+            draft = next((s.output or {} for s in fu_run.steps if s.node_id == "draft"), {}).get("reply")
+            sent = next((s.output or {} for s in fu_run.steps if s.node_id == "send"), {})
+            follow_up = FollowUpOut(run_id=fu_run.id, status=fu_run.status.value, approval=fu_approval,
+                                    delivery_mode=sent.get("mode"),
+                                    reply=lead.follow_up_reply or (fu_approval.payload.get("reply") if fu_approval else draft),
+                                    created_at=fu_run.created_at)
+    return ConversationOut(lead=lead, approval=approval, follow_up=follow_up)
 
 
 class TestMessageIn(BaseModel):
@@ -150,7 +177,7 @@ _try_hits: dict[str, deque] = defaultdict(deque)  # per visitor, in memory
 def _check_try_it_limits(request: Request, db: Session) -> None:
     """Every test message costs real AI calls, so a public demo needs a ceiling."""
     settings = get_settings()
-    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    ip = client_ip(request)
     now, hits = time.monotonic(), _try_hits[ip]
     while hits and now - hits[0] > 3600:
         hits.popleft()

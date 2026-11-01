@@ -106,7 +106,7 @@ def test_test_message_and_conversation(client, monkeypatch):
     assert resp.status_code == 202
     run_id = resp.json()["run_id"]
     body = client.get(f"/api/conversations/{run_id}").json()
-    assert body == {"lead": None, "approval": None}  # nothing yet: the run hasn't executed
+    assert body == {"lead": None, "approval": None, "follow_up": None}  # nothing yet: the run hasn't executed
 
 
 def test_demo_seed_runs_the_real_pipeline_and_only_fills_an_empty_db(client):

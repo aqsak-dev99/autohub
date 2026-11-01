@@ -186,9 +186,52 @@ Give the customer's message and the drafted reply in plain, natural English. Tra
 every number, price and promise exactly as written, and don't add, soften or explain anything."""
 
 
+# ---------- the fact check, shared with the Follow-up Nudge ----------
+
+def judge_reply(s, language_name: str, passages_text: str, customer_message: str, reply: str) -> Judgement:
+    """The judge labels every claim in a reply as supported by the passages or not."""
+    return s.llm_json(
+        [{"role": "system", "content": JUDGE_PROMPT.format(language=language_name)},
+         {"role": "user", "content": f"Passages:\n{passages_text}\n\nCustomer message:\n{customer_message}"
+                                     f"\n\nReply to check:\n{reply}"}],
+        # reasoning shares the output budget with the JSON answer, so give it room: a cut-off
+        # answer is invalid JSON (found in testing on long Arabic and English replies)
+        Judgement, max_tokens=3000, reasoning_effort="medium",
+    ).parsed
+
+
+def decide_route(j: Judgement, reply: str, *, owner, known_text: str, language: str, intent: str,
+                 wants_unoffered_service: bool) -> dict:
+    """Code, not the model, decides: same facts in, same route out. `owner` is the Rules page."""
+    confidence, unsupported = grounding(j)
+    price_issues = rules.unsupported_prices(reply, known_text)
+    reasons = rules.route_reply(
+        judge_confidence=confidence, threshold=owner.auto_send_confidence, grounded=not unsupported,
+        unsupported_claims=unsupported, language_matches=j.language_matches,
+        language=language, review_languages=set(owner.review_languages),
+        price_issues=price_issues, intent=intent, wants_unoffered_service=wants_unoffered_service,
+        check_prices=owner.review_price_not_on_site, check_existing_client=owner.review_existing_client,
+        check_unoffered_service=owner.review_unoffered_service,
+    )
+    return {"claims": j.claims, "language_matches": j.language_matches, "confidence": confidence,
+            "unsupported": unsupported, "price_issues": price_issues,
+            "route": "review" if reasons else "auto", "reasons": reasons}
+
+
+def passages_block(hits) -> str:
+    return "\n\n".join(f"[{p.id}] {p.title}\n{p.text}" for p, _ in hits) or "(no passages found)"
+
+
+def with_pinned(kb, hits):
+    """Search hits plus the passages the prompts always rely on."""
+    found = {p.id for p, _ in hits}
+    return hits + [(kb.by_id[pid], None) for pid in PINNED_PASSAGES if pid not in found]
+
+
 @register
 class LeadHandler(BaseAutomation):
     slug = "lead_handler"
+    irreversible_steps = frozenset({"send"})
 
     def run(self, ctx: RunContext, payload: dict) -> dict:
         settings = ctx.llm.settings
@@ -226,10 +269,7 @@ class LeadHandler(BaseAutomation):
         # 3. retrieve: keyword search over flowpath's content
         query = c.search_query.strip() or inbound.message
         with ctx.step("retrieve", {"query": query}) as s:
-            hits = kb.search(query, limit=4)
-            found = {p.id for p, _ in hits}
-            pinned = [(kb.by_id[pid], None) for pid in PINNED_PASSAGES if pid not in found]
-            hits = hits + pinned
+            hits = with_pinned(kb, kb.search(query, limit=4))
             s.output = {"kb_version": kb.version,
                         "passages": [{"id": p.id, "label": p.label, "url": p.url, "score": sc,
                                       "pinned": sc is None} for p, sc in hits]}
@@ -255,7 +295,7 @@ class LeadHandler(BaseAutomation):
             s.output = {**(s.output or {}), "extracted": q, "budget_band": band, "score": score,
                         "temperature": temperature, "reasons": reasons}
 
-        passages_text = "\n\n".join(f"[{p.id}] {p.title}\n{p.text}" for p, _ in hits) or "(no passages found)"
+        passages_text = passages_block(hits)
         language_name = rules.LANGUAGE_NAMES[c.language]
         max_words = 90 if inbound.channel == "web_chat" else 150  # chat replies are read on a phone-sized widget
 
@@ -274,30 +314,11 @@ class LeadHandler(BaseAutomation):
         known_text = kb.full_text() + "\n" + inbound.message  # the customer's own amounts aren't invented
 
         def judge(s, reply: str) -> Judgement:
-            return s.llm_json(
-                [{"role": "system", "content": JUDGE_PROMPT.format(language=language_name)},
-                 {"role": "user", "content": f"Passages:\n{passages_text}\n\nCustomer message:\n{inbound.message}"
-                                             f"\n\nReply to check:\n{reply}"}],
-                # reasoning shares the output budget with the JSON answer, so give it room: a cut-off
-                # answer is invalid JSON (found in testing on long Arabic and English replies)
-                Judgement, max_tokens=3000, reasoning_effort="medium",
-            ).parsed
+            return judge_reply(s, language_name, passages_text, inbound.message, reply)
 
         def decide(j: Judgement, reply: str) -> dict:
-            """Code, not the model, decides: same facts in, same route out."""
-            confidence, unsupported = grounding(j)
-            price_issues = rules.unsupported_prices(reply, known_text)
-            reasons = rules.route_reply(
-                judge_confidence=confidence, threshold=owner.auto_send_confidence, grounded=not unsupported,
-                unsupported_claims=unsupported, language_matches=j.language_matches,
-                language=c.language, review_languages=set(owner.review_languages),
-                price_issues=price_issues, intent=c.intent, wants_unoffered_service=c.wants_unoffered_service,
-                check_prices=owner.review_price_not_on_site, check_existing_client=owner.review_existing_client,
-                check_unoffered_service=owner.review_unoffered_service,
-            )
-            return {"claims": j.claims, "language_matches": j.language_matches, "confidence": confidence,
-                    "unsupported": unsupported, "price_issues": price_issues,
-                    "route": "review" if reasons else "auto", "reasons": reasons}
+            return decide_route(j, reply, owner=owner, known_text=known_text, language=c.language,
+                                intent=c.intent, wants_unoffered_service=c.wants_unoffered_service)
 
         # 6. score: an LLM judge labels every claim, then code applies the routing rules
         with ctx.step("score") as s:
@@ -411,7 +432,7 @@ class LeadHandler(BaseAutomation):
             lead.reply = reply
             lead.replied = True
             lead.status = status
-            lead.updated_at = datetime.now(timezone.utc)
+            lead.replied_at = lead.updated_at = datetime.now(timezone.utc)
             s.output = {"lead_id": lead.id, "status": status, "delivery_mode": delivery["mode"]}
 
 

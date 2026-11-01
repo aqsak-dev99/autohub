@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.engine.dispatch import dispatch
-from app.engine.executor import AutomationNotFound, create_run, reset_for_retry
+from app.engine.executor import AutomationNotFound, RetryRefused, create_run, reset_for_retry
 from app.models import Run, RunStatus
 from app.schemas import RunOut
 
@@ -50,6 +50,9 @@ def retry_run(run_id: uuid.UUID, background: BackgroundTasks, db: Session = Depe
         raise HTTPException(404, "Run not found")
     if run.status != RunStatus.failed:
         raise HTTPException(409, f"Only failed runs can be retried (this one is {run.status.value})")
-    reset_for_retry(db, run)
+    try:
+        reset_for_retry(db, run)
+    except RetryRefused as exc:
+        raise HTTPException(409, str(exc))
     via = dispatch(run.id, background)
     return TriggerOut(**RunOut.model_validate(run).model_dump(), dispatched_via=via)

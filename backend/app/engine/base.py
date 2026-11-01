@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 class BaseAutomation:
     slug: ClassVar[str]
+    # steps that change the outside world and can't be undone (e.g. "send"). A failed run that got
+    # past one of these isn't retried from the start, because that would do it twice.
+    irreversible_steps: ClassVar[frozenset[str]] = frozenset()
 
     def run(self, ctx: "RunContext", payload: dict) -> dict:  # pragma: no cover - interface
         raise NotImplementedError

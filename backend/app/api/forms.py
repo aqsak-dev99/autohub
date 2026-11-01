@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.ratelimit import client_ip
 from app.db import get_db
 from app.intake import start_lead
 from app.models import InboundMessage
@@ -83,12 +84,12 @@ def contact(body: ContactIn, request: Request, background: BackgroundTasks, db: 
         return ContactOut(ok=True, message=THANKS)  # a bot: look successful, do nothing
 
     limit = settings.form_rate_limit_per_hour
-    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0]
+    ip = client_ip(request)
     since = datetime.now(timezone.utc) - timedelta(hours=1)
     recent = db.scalar(select(func.count()).select_from(InboundMessage).where(
         InboundMessage.provider == "form", InboundMessage.external_id.like(f"form:{body.email}:%"),
         InboundMessage.created_at >= since))
-    if recent >= limit or _too_many_from_ip(ip.strip(), limit * 3):
+    if recent >= limit or _too_many_from_ip(ip, limit * 3):
         raise HTTPException(429, "Too many messages. Please try again in an hour.")
 
     message = body.message.strip()

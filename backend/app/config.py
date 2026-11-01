@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     email_poll_max: int = 20          # most messages handled per poll
     email_send_allowlist: str = ""    # comma-separated addresses; if set, live emails go ONLY to these
 
+    # follow-up nudge: one follow-up when a hot or warm lead goes quiet after our reply
+    follow_up_after_days: float = 2      # quiet this long before a follow-up
+    follow_up_max_age_days: float = 14   # older than this, let it go
+
     # daily digest
     digest_email_to: str = ""         # your own email
 

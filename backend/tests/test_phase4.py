@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import app.api.forms as forms
 import app.engine.executor as executor
-from app.automations.daily_digest import collect_stats, format_digest
+from app.automations.daily_digest import collect_stats, format_digest, todo_candidates
 from app.channels import send_reply
 from app.config import get_settings
 from app.db import SessionLocal
@@ -149,12 +149,15 @@ def test_digest_text_is_built_from_numbers():
              "oldest_pending_hours": 3.5, "runs": 6, "failed_runs": 0, "cost_usd": 0.0031,
              "hot_leads": [{"name": "Ayesha", "services": ["social", "paid"], "budget": "Rs 150k–400k",
                             "status": "replied"}]}
-    text = format_digest(stats, "Reply to the waiting review first.", datetime(2026, 10, 30, 4, 0, tzinfo=timezone.utc))
-    assert text.splitlines()[0] == "flowpath digest · Fri 30 Oct"
+    todo = [{"text": "Check the reply waiting for Sana", "detail": "hot lead, waiting 4 h", "why": "A hot lead is waiting."},
+            {"text": "Look at the failed runs in AutoHub", "detail": "1 in the last 24 h", "why": None}]
+    text = format_digest(stats, todo, datetime(2026, 10, 30, 4, 0, tzinfo=timezone.utc))
+    assert text.splitlines()[:4] == ["flowpath digest · Fri 30 Oct", "", "Today:",
+                                     "1. Check the reply waiting for Sana (hot lead, waiting 4 h): A hot lead is waiting"]
+    assert "2. Look at the failed runs in AutoHub (1 in the last 24 h)" in text
     assert "Leads: 5 (hot 2, warm 2, cold 1) · spam 1" in text
     assert "Replied: 3 (2 auto-sent)" in text and "Waiting for review: 1 (oldest 3.5 h)" in text
     assert "🔥 Ayesha · social + paid, Rs 150k–400k · replied" in text
-    assert text.endswith("→ Reply to the waiting review first.")
 
 
 def run_digest(llm):
@@ -169,11 +172,20 @@ def run_digest(llm):
 def test_digest_run_end_to_end(client, monkeypatch):
     add_leads(("Digest Hot", "hot", "replied"))
     sent = fake_smtp(monkeypatch)
-    llm = make_llm([{"line": "Call the hot lead before noon."}])
+    with SessionLocal() as db:
+        ids = [c["id"] for c in todo_candidates(db)]
+    assert len(ids) >= 2  # earlier tests left replies waiting and failed runs
+    # the AI orders the list; an id it made up, and a reason with a number in it, are dropped
+    llm = make_llm([{"items": [{"id": ids[1], "why": "Customers waiting come first."},
+                               {"id": "call:99999", "why": "Invented task"},
+                               {"id": ids[0], "why": "Worth Rs 300,000 a month"}]}])
     llm.settings = email_settings(digest_email_to="aqsa@example.com")
     status, output, steps = run_digest(llm)
     assert status == "succeeded" and list(steps) == ["schedule", "collect", "summarize", "deliver"]
-    assert output["delivered"] and "→ Call the hot lead before noon." in output["text"]
+    todo = steps["summarize"].output["todo"]
+    assert [t["id"] for t in todo[:2]] == [ids[1], ids[0]] and "call:99999" not in [t["id"] for t in todo]
+    assert todo[0]["why"] == "Customers waiting come first." and todo[1]["why"] is None
+    assert output["delivered"] and "Today:\n1. " in output["text"] and ": Customers waiting come first" in output["text"]
     assert sent[0]["To"] == "aqsa@example.com" and sent[0]["Subject"].startswith("flowpath digest")
 
 
@@ -186,7 +198,8 @@ def test_digest_survives_llm_and_delivery_failures(client, monkeypatch):
     llm.settings = email_settings(digest_email_to="aqsa@example.com")
     status, output, steps = run_digest(llm)
     assert status == "succeeded"  # the numbers still go out, just without the advice line
-    assert steps["summarize"].output["fallback"] is True and "→" not in output["text"]
+    assert steps["summarize"].output["fallback"] is True  # the AI failed: code's own order is used
+    assert steps["summarize"].output["ai_ordered"] is False
     [delivery] = steps["deliver"].output["deliveries"]
     assert delivery["code"] == 550 and output["delivered"] is False
 
@@ -194,3 +207,20 @@ def test_digest_survives_llm_and_delivery_failures(client, monkeypatch):
 def test_digest_preview_endpoint(client):
     body = client.get("/api/digest/preview").json()
     assert body["text"].startswith("flowpath digest ·") and "leads" in body["stats"]
+
+
+def test_priorities_keep_only_real_tasks_and_fall_back_to_code_order():
+    from app.automations.daily_digest import Priorities, pick_priorities
+
+    tasks = [{"id": "approve:1", "rank": 0, "text": "Check the reply waiting for Sana", "detail": "hot lead"},
+             {"id": "call:2", "rank": 5, "text": "Call Omar", "detail": "hot lead, asked for a call"},
+             {"id": "failed", "rank": 25, "text": "Look at the failed runs", "detail": "2 in the last 24 h"},
+             {"id": "approve:3", "rank": 20, "text": "Check the follow-up waiting for Nida", "detail": "warm lead"}]
+    answer = Priorities.model_validate({"items": [{"id": "call:2", "why": "He asked for a call."},
+                                                  {"id": "call:2", "why": "duplicate"},
+                                                  {"id": "approve:404", "why": "made up"}]})
+    picked = pick_priorities(tasks, answer)
+    assert [t["id"] for t in picked] == ["call:2", "approve:1", "failed"]  # AI's pick first, then code's order
+    assert [t["why"] for t in picked] == ["He asked for a call.", None, None]
+    assert [t["id"] for t in pick_priorities(tasks, None)] == ["approve:1", "call:2", "failed"]
+    assert pick_priorities([], None) == []

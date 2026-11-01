@@ -251,7 +251,7 @@ Someone who messages twice is one prospect; the overview lists their best-scorin
 **Decision:** When a reply in Urdu, Roman Urdu or Arabic is held, a `translate` step adds a faithful English version of the customer's message and the draft to the approval, using the cheaper model. A failed translation doesn't block the approval. The dashboard notes when the owner has edited the draft after the translation was made.
 **Why:** An owner can't responsibly approve something they can't read, and the review languages are exactly the ones an English-reading owner may not. Translating only held replies keeps the cost to the cases a person actually looks at.
 
-## 60. One automation done well instead of three half-done
+## 60. One automation done well instead of three half-done *(partly superseded by 73 and 74)*
 **Decision:** The Document Extractor (planned Phase 3) was removed from the registry, models, settings and docs before it was built; on startup, retired automations are deleted if they never ran, or hidden if they have history. The System Check now verifies the two models actually used.
 **Why:** With the deadline close, a deployed, evaluated Lead Handler shows more than a second automation without evals. A listed automation that fails with "no implementation" would also make the hub look unfinished. The run engine stays general: adding an automation is still a new class plus a registry entry.
 
@@ -286,6 +286,34 @@ Someone who messages twice is one prospect; the overview lists their best-scorin
 ## 68. An opening animation that never gets in the way
 **Decision:** A short splash plays over the app while it loads: glowing rings ripple out, a spark becomes the ✦ mark, and the name slides out. It plays once per browser session, waits for the app to be ready rather than covering it longer than needed, can be skipped with a click or any key, and becomes a plain fade for people who turn off motion in their system settings. It lasts about 1.7 s and is CSS and SVG only.
 **Why:** It gives the demo a memorable first second and covers the free server's wake-up delay, but an animation that repeats on every page load or can't be skipped quickly becomes something users resent.
+
+## 69. Status changes are claimed with one conditional UPDATE
+**Decision:** Every "only if it's still X" step is a single `UPDATE ... WHERE id = ? AND status = ?` whose affected-row count says who won (`claim()` in `engine/executor.py`): deciding an approval (`pending` → decided), starting a run (`queued` → `running`) and resuming one (`waiting_approval` → `running`). The earlier read-then-write checks stay only to give a friendly message.
+**Why:** Reading a status and then writing it is two steps, so two clicks, two browser tabs or a job delivered twice could both read "pending" and both carry on, and the customer would get the same email twice. The database already serialises single-row updates, so this closes the gap without locks, a queue feature or new infrastructure, and works the same on SQLite and Postgres. A test reproduces the race with two sessions.
+
+## 70. pgvector removed
+**Decision:** The pgvector package, the `CREATE EXTENSION vector` on startup and the pgvector Docker image were removed; local Postgres is plain `postgres:16`.
+**Why:** Retrieval is BM25 over about 20 passages (decision 15), so nothing ever used vectors, and listing an unused technology misrepresents the project. The startup extension call was also a real bug: the app would refuse to start on any Postgres without pgvector installed, including most free hosted databases. Embeddings can come back, with a measurement, if the knowledge base grows.
+
+## 71. Retries never repeat what can't be undone, and keep the failed attempt
+**Decision:** An automation declares its `irreversible_steps` (the Lead Handler and Follow-up Nudge: `send`). A failed run that already completed one of them can't be retried from the start (409 with the reason). An allowed retry moves the failed attempt's steps into `output.previous_attempts` (status, error, model, duration, cost per step) instead of deleting them. On startup, runs that have been `running` for over 10 minutes are marked failed as interrupted, and their lead is marked failed.
+**Why:** Retry re-runs from intake. If the reply was emailed and only saving the lead failed, a retry would email the customer again, which is worse than the original failure. Deleting the failed steps also threw away the trace needed to understand the failure. And a run lives in one process: if that process dies (a deploy, a crash, the free plan sleeping), nothing else would ever finish it, so it would say "running" forever. The 10-minute margin leaves a separate worker's in-progress job alone (jobs time out after 5).
+
+## 72. Wrong passwords are rate limited by the address the proxy saw
+**Decision:** Five wrong passwords from one address lock that address out for 15 minutes (429 with Retry-After); a correct login clears its count. The visitor's address is the last `X-Forwarded-For` entry, which Render's proxy appends, and the same helper now feeds the contact form and Try-it limits.
+**Why:** Without a limit the owner password could be guessed at full speed. Counting only failures means the owner never notices. Earlier code used the first `X-Forwarded-For` entry, which the visitor controls, so anyone could dodge every per-IP limit by sending a made-up header. Limits are in memory: one server, and resetting on restart is acceptable for slowing guessing; several servers would move them to Redis.
+
+## 73. Follow-up Nudge: one gentle follow-up, exactly once
+**Decision:** A third automation. n8n calls `POST /api/follow-ups/scan` every morning; it finds hot and warm leads we replied to by email between 2 and 14 days ago who haven't written again, and starts one run per lead. The run re-checks the lead, drafts a short follow-up in the customer's language with the stronger model, then uses the Lead Handler's own fact check and the owner's Rules page (shared `judge_reply` and `decide_route`), so it can send alone, or hold the draft (translated if needed) in Needs you. Each lead is claimed as `follow_up:<lead id>` in `inbound_messages`, so it gets at most one follow-up ever, even if scans overlap, and one the owner skips is never offered again. Website-chat leads are left out (there's no way to write to them later).
+**Why:** Quiet leads are where agencies lose money, and a follow-up is the most common manual chore after the first reply. Reusing the claim table, the fact check and the rules means the new automation added no new safety logic and no engine changes, which is also the proof that the hub design works: a second customer-facing automation is a class, a registry entry and a trigger.
+
+## 74. The digest's "Today" list: code builds the tasks, the AI only orders them
+**Decision:** The Daily Digest now opens with up to three tasks for today, each built by code from a database row: replies or follow-ups waiting (with how long), hot leads who asked for a call, hot leads still quiet after their follow-up, failed runs. The AI receives the list with ids and answers with ids in order plus a short reason; unknown ids are dropped, a reason containing a digit is dropped, and code's own order fills any gap or replaces the AI entirely if the call fails. The same list (in code's order, no AI) is shown on Home.
+**Why:** "What should I do first?" is the useful part of a morning summary, and ordering by value and urgency is a judgement the model is good at. But a model writing the tasks could invent a lead, a name or an amount in an email the owner acts on. Restricting it to choosing from ids makes that impossible by construction rather than by prompt, which is the same rule as everywhere else in AutoHub: the model advises, code decides what's true.
+
+## 75. The tests also run on Postgres
+**Decision:** `TEST_DATABASE_URL` points the test suite at a Postgres database (wiped first), and CI runs it against a Postgres service container alongside the SQLite run.
+**Why:** The live demo uses SQLite and local development uses Postgres, and the two differ in ways tests catch: running the suite on Postgres found that Postgres returns times in its server's time zone, which put runs on the wrong day in the weekly chart (now converted to UTC before bucketing), and the pgvector startup failure (decision 70).
 
 ## Known trade-offs to revisit
 - **One owner account.** Login has a single owner password; a business with staff would need user accounts and an audit trail of who approved what.

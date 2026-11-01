@@ -54,6 +54,7 @@ export default function Conversations() {
               </span>
               <span className="row" style={{ flexWrap: 'nowrap', gap: 10 }}>
                 <TempChip temperature={l.temperature} />
+                {l.followed_up_at && <span className="tag" title="Your assistant sent one follow-up after they went quiet">Followed up</span>}
                 <span className={`tone-${st.tone}`} style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{st.text}</span>
                 <span className="faint" style={{ whiteSpace: 'nowrap', minWidth: 74, textAlign: 'right' }}>{ago(l.created_at)}</span>
               </span>

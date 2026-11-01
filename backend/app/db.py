@@ -46,10 +46,6 @@ def init_db() -> None:
 
     from app import models  # noqa: F401  (import registers the tables on Base)
 
-    if settings.is_postgres:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-
     config = Config(str(_BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(_BACKEND_DIR / "migrations"))
     with engine.begin() as conn:

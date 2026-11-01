@@ -55,16 +55,43 @@ AUTOMATIONS: list[dict] = [
         },
     },
     {
+        "slug": "follow_up",
+        "name": "Follow-up Nudge",
+        "description": "Every morning, finds hot and warm leads who went quiet after our reply and drafts one "
+                       "gentle follow-up in their language, fact-checked and routed by the same rules as replies.",
+        "trigger": "schedule",
+        "graph": {
+            "nodes": [
+                _node("pick", "Quiet lead found", 0, 0, "trigger"),
+                _node("retrieve", "Search knowledge base", 0, 100),
+                _node("draft", "Draft follow-up", 0, 200),
+                _node("score", "Fact-check + route", 0, 300, "decision"),
+                _node("translate", "Translate for the owner", 240, 380),
+                _node("approval", "Human approval", 240, 500, "human"),
+                _node("send", "Send follow-up", -120, 500),
+                _node("save", "Mark followed up", 0, 620),
+            ],
+            "edges": [
+                _edge("pick", "retrieve"), _edge("retrieve", "draft"), _edge("draft", "score"),
+                _edge("score", "send", "auto"), _edge("score", "translate", "review"),
+                _edge("score", "approval", "review"), _edge("translate", "approval"),
+                _edge("approval", "send", "approved"), _edge("approval", "save", "skipped"),
+                _edge("send", "save"),
+            ],
+        },
+    },
+    {
         "slug": "daily_digest",
         "name": "Daily Digest",
-        "description": "n8n-scheduled morning email summary: new leads, hot leads, replies waiting for "
-                       "review, failed runs and AI cost. Code builds the numbers; the AI writes one advice line.",
+        "description": "n8n-scheduled morning email: today's top three tasks, then new and hot leads, replies "
+                       "and follow-ups waiting, failed runs and AI cost. Code builds every number and every task; "
+                       "the AI only puts the tasks in order and says why.",
         "trigger": "schedule",
         "graph": {
             "nodes": [
                 _node("schedule", "n8n schedule (9am)", 0, 0, "trigger"),
-                _node("collect", "Collect stats", 0, 100),
-                _node("summarize", "Summarize with AI", 0, 200),
+                _node("collect", "Collect stats + tasks", 0, 100),
+                _node("summarize", "Prioritize with AI", 0, 200),
                 _node("deliver", "Send by email", 0, 300),
             ],
             "edges": [

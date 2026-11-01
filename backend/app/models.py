@@ -7,6 +7,7 @@ Flow visualizer, cost tracking and debugging for free, for every automation.
     Automation 1──* Run 1──* RunStep
                      │
                      ├──* Approval   (human-in-the-loop decisions)
+                     │                (follow_up runs point at an existing Lead by lead_id)
                      └──* Lead       (output of the lead handler)
 """
 import enum
@@ -185,6 +186,10 @@ class Lead(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     replied: Mapped[bool] = mapped_column(default=False)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # the Follow-up Nudge: one gentle follow-up when a good lead goes quiet after our reply
+    followed_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)
     # new | awaiting_approval | replied | rejected | spam
 
@@ -202,7 +207,7 @@ class InboundMessage(Base):
     __tablename__ = "inbound_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    provider: Mapped[str] = mapped_column(String(16))           # email | form
+    provider: Mapped[str] = mapped_column(String(16))           # email | form | follow_up
     external_id: Mapped[str] = mapped_column(String(128), unique=True)  # email Message-ID hash / form fingerprint
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

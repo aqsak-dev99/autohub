@@ -18,6 +18,8 @@ def secured(monkeypatch):
     monkeypatch.setattr(s, "inbound_api_key", "machine-key")
     monkeypatch.setattr(leads_api, "dispatch", lambda run_id, background: "test")
     leads_api._try_hits.clear()
+    from app.api.auth import failed_logins
+    failed_logins.reset()
     with TestClient(app) as c:
         yield c
 
@@ -97,3 +99,29 @@ def test_public_form_is_off_in_production_until_origins_are_set(secured, monkeyp
     monkeypatch.setattr(get_settings(), "app_env", "production")
     body = {"name": "Zainab", "email": "z@bakery.pk", "message": "How much for Instagram posts?"}
     assert secured.post("/api/forms/contact", json=body).status_code == 403
+
+
+def test_wrong_passwords_are_rate_limited(secured):
+    for _ in range(5):
+        assert secured.post("/api/auth/login", json={"password": "guess"}).status_code == 401
+    blocked = secured.post("/api/auth/login", json={"password": "owner-pass"})
+    assert blocked.status_code == 429 and "Retry-After" in blocked.headers  # even the right one waits
+    # another visitor isn't affected; the limit is per address
+    other = secured.post("/api/auth/login", json={"password": "owner-pass"}, headers={"X-Forwarded-For": "203.0.113.9"})
+    assert other.status_code == 200
+
+
+def test_a_made_up_forwarded_address_does_not_dodge_the_limit(secured):
+    # the proxy appends the real address last; a visitor can only add entries before it
+    for i in range(5):
+        secured.post("/api/auth/login", json={"password": "guess"}, headers={"X-Forwarded-For": f"10.0.0.{i}, 198.51.100.7"})
+    resp = secured.post("/api/auth/login", json={"password": "guess"}, headers={"X-Forwarded-For": "1.2.3.4, 198.51.100.7"})
+    assert resp.status_code == 429
+
+
+def test_a_successful_login_clears_earlier_mistakes(secured):
+    for _ in range(4):
+        secured.post("/api/auth/login", json={"password": "guess"})
+    assert secured.post("/api/auth/login", json={"password": "owner-pass"}).status_code == 200
+    for _ in range(4):
+        assert secured.post("/api/auth/login", json={"password": "guess"}).status_code == 401

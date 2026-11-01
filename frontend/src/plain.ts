@@ -87,8 +87,10 @@ export function nextStep(lead: Lead | null, approval: Approval | null): string |
   if (lead.intent === 'job_applicant') return `Forward ${name}'s message to whoever handles hiring.`
   if (lead.status === 'failed') return 'Try the run again, or reply yourself.'
   const asksCall = (lead.score_reasons ?? []).some((r) => r.includes('call'))
-  if (lead.temperature === 'hot') return asksCall ? `Call ${name} today. They asked for a call and have a strong budget.` : `Follow up with ${name} today: this is a strong lead.`
-  if (lead.temperature === 'warm') return `If ${name} hasn't replied in two days, send a short follow-up.`
+  const canNudge = lead.channel !== 'web_chat'  // a website chat visitor can't be written to later
+  if (lead.followed_up_at) return `Your assistant already followed up once. If ${name} is still quiet, let it go or call them yourself.`
+  if (lead.temperature === 'hot') return asksCall ? `Call ${name} today. They asked for a call and have a strong budget.` : `Follow up with ${name} today: this is a strong lead.${canNudge ? " If you don't, your assistant will send one gentle reminder after two quiet days." : ''}`
+  if (lead.temperature === 'warm') return canNudge ? `Nothing yet. If ${name} hasn't replied in two days, your assistant will draft one gentle follow-up.` : `If ${name} comes back to the chat, pick it up from there.`
   return 'Nothing needed: the reply covers it.'
 }
 

@@ -1,12 +1,15 @@
-"""Daily Digest: a morning email summary of the last 24 hours for flowpath's team.
+"""Daily Digest: a morning email for flowpath's team: what happened, and what to do today.
 
     schedule (n8n, 9 am) → collect → summarize → deliver
 
-Code builds every number in the message; the LLM only writes one line on
-what needs attention, from those numbers, and is told not to add any. If
-the LLM call fails, the digest still goes out without that line. It goes to
-DIGEST_EMAIL_TO; if delivery fails the text is still saved on the run for
-n8n or the dashboard to show.
+collect: code counts everything (leads, replies, follow-ups, failures, cost) and builds a list of
+concrete things someone could do today, each from a database row: "Check the reply waiting for Sana",
+"Call Omar: he asked for a call", "Call Bilal yourself: no answer to the follow-up".
+
+summarize: the AI only *orders* that list (top 3) and adds a short reason for each. It can't add a
+task, a name or a number: it answers with task ids, unknown ids are dropped, and a reason that
+contains a digit is dropped too. If the AI call fails, code orders the list by its own rules.
+The email goes to DIGEST_EMAIL_TO; if delivery fails the text is still saved on the run.
 """
 from __future__ import annotations
 
@@ -33,14 +36,22 @@ class DigestIn(BaseModel):
     source: str = "manual"
 
 
-class Attention(BaseModel):
-    line: str = Field(description="One or two short sentences on what the team should do first today. "
-                                  "No numbers.")
+class Priority(BaseModel):
+    id: str = Field(description="The id of one task from the list")
+    why: str = Field(max_length=140, description="Why it matters today, in under 12 words. No numbers.")
 
 
-ATTENTION_PROMPT = """You write the last line of a morning summary for a small marketing studio's team.
-From the facts below, say in one or two short sentences what they should do first today (for example:
-reply to a waiting hot lead, check failed runs). Do not include any numbers or names not given. No emojis."""
+class Priorities(BaseModel):
+    items: list[Priority] = Field(max_length=3)
+
+
+PRIORITIES_PROMPT = """You help the owner of a small marketing studio plan the morning.
+Below is a list of tasks, each with an id. Pick the three that matter most today, most important first,
+and give each a short reason (under 12 words). Money and momentum first: a hot lead waiting or asking
+for a call beats a cold one; customers waiting beat internal checks.
+Answer only with ids from the list. Don't add tasks, names or numbers. No emojis."""
+
+TEMP_RANK = {"hot": 0, "warm": 1, "cold": 2}
 
 
 def _since(db: Session, hours: int) -> datetime:
@@ -77,6 +88,7 @@ def collect_stats(db: Session, hours: int = 24) -> dict:
         .where(Run.created_at >= since)
     ).one()
     failed = db.scalar(select(func.count(Run.id)).where(Run.created_at >= since, Run.status == RunStatus.failed))
+    follow_ups_sent = db.scalar(select(func.count(Lead.id)).where(Lead.followed_up_at >= since)) or 0
 
     return {
         "hours": hours,
@@ -87,6 +99,8 @@ def collect_stats(db: Session, hours: int = 24) -> dict:
         "replied": len(replied),
         "auto_sent": sum(1 for lead in replied if lead.run_id not in reviewed_runs),
         "pending_approvals": len(pending),
+        "follow_ups_sent": follow_ups_sent,
+        "follow_ups_waiting": sum(1 for a in pending if a.kind == "follow_up"),
         "oldest_pending_hours": oldest_wait_h,
         "hot_leads": [
             {"name": lead.name or lead.contact, "services": [SERVICE_SHORT.get(s, s) for s in lead.services or []],
@@ -99,10 +113,75 @@ def collect_stats(db: Session, hours: int = 24) -> dict:
     }
 
 
-def format_digest(stats: dict, attention: str | None, now: datetime, tz: str = "Asia/Karachi") -> str:
+def _hours_since(value: datetime, now: datetime) -> float:
+    value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return (now - value).total_seconds() / 3600
+
+
+def todo_candidates(db: Session, now: datetime | None = None) -> list[dict]:
+    """Things someone could do today, each built from a row in the database. `rank` is code's own order."""
+    now = now or datetime.now(timezone.utc)
+    tasks: list[dict] = []
+
+    for a in db.scalars(select(Approval).where(Approval.status == ApprovalStatus.pending)
+                        .order_by(Approval.created_at).limit(6)):
+        p = a.payload or {}
+        temp, waited = p.get("temperature") or "cold", round(_hours_since(a.created_at, now))
+        what = "follow-up" if a.kind == "follow_up" else "reply"
+        tasks.append({"id": f"approve:{a.id}", "approval_id": a.id, "rank": TEMP_RANK.get(temp, 3) * 10,
+                      "text": f"Check the {what} waiting for {p.get('name') or p.get('contact')}",
+                      "detail": f"{temp} lead, waiting {waited} h" if temp in TEMP_RANK else f"waiting {waited} h"})
+
+    recent = _since(db, 72)
+    for lead in db.scalars(select(Lead).where(Lead.temperature == "hot", Lead.status == "replied",
+                                              Lead.created_at >= recent, Lead.followed_up_at.is_(None))
+                           .order_by(Lead.score.desc().nullslast()).limit(4)):
+        if any("call" in r for r in lead.score_reasons or []):
+            tasks.append({"id": f"call:{lead.id}", "run_id": str(lead.run_id) if lead.run_id else None, "rank": 5, "text": f"Call {lead.name or lead.contact}",
+                          "detail": "hot lead, asked for a call"})
+
+    quiet_since = _since(db, 48)
+    for lead in db.scalars(select(Lead).where(Lead.temperature == "hot", Lead.followed_up_at.is_not(None),
+                                              Lead.followed_up_at <= quiet_since).limit(3)):
+        wrote_again = db.scalar(select(Lead.id).where(Lead.contact == lead.contact, Lead.id != lead.id,
+                                                      Lead.created_at > lead.followed_up_at).limit(1))
+        if not wrote_again:
+            tasks.append({"id": f"quiet:{lead.id}", "run_id": str(lead.run_id) if lead.run_id else None, "rank": 15, "text": f"Call {lead.name or lead.contact} yourself",
+                          "detail": "hot lead, no answer to the follow-up"})
+
+    failed = db.scalar(select(func.count(Run.id)).where(Run.created_at >= _since(db, 24),
+                                                        Run.status == RunStatus.failed)) or 0
+    if failed:
+        tasks.append({"id": "failed", "rank": 25, "text": "Look at the failed runs in AutoHub",
+                      "detail": f"{failed} in the last 24 h"})
+    return sorted(tasks, key=lambda t: t["rank"])
+
+
+def pick_priorities(candidates: list[dict], answer: Priorities | None) -> list[dict]:
+    """The AI's order where it's valid, code's order where it isn't. Never more than 3."""
+    by_id = {c["id"]: c for c in candidates}
+    chosen: list[dict] = []
+    for item in (answer.items if answer else []):
+        if item.id in by_id and all(c["id"] != item.id for c in chosen):
+            why = item.why.strip() if item.why and not any(ch.isdigit() for ch in item.why) else None
+            chosen.append({**by_id[item.id], "why": why})
+    for c in candidates:  # top up from code's order (or fill it entirely if the AI failed)
+        if len(chosen) >= 3:
+            break
+        if all(x["id"] != c["id"] for x in chosen):
+            chosen.append({**c, "why": None})
+    return chosen[:3]
+
+
+def format_digest(stats: dict, todo: list[dict] | None, now: datetime, tz: str = "Asia/Karachi") -> str:
     local = now.astimezone(ZoneInfo(tz))
     t = stats["by_temperature"]
     lines = [f"flowpath digest · {local:%a %d %b}", ""]
+    if todo:
+        lines.append("Today:")
+        for i, task in enumerate(todo, 1):
+            lines.append(f"{i}. {task['text']} ({task['detail']})" + (f": {task['why'].rstrip('.')}" if task.get("why") else ""))
+        lines.append("")
     if stats["leads"] == 0:
         lines.append(f"No new leads in the last {stats['hours']} hours.")
     else:
@@ -112,12 +191,12 @@ def format_digest(stats: dict, attention: str | None, now: datetime, tz: str = "
         lines.append(f"Replied: {stats['replied']} ({stats['auto_sent']} auto-sent)")
     if stats["pending_approvals"]:
         lines.append(f"Waiting for review: {stats['pending_approvals']} (oldest {stats['oldest_pending_hours']} h)")
+    if stats.get("follow_ups_sent") or stats.get("follow_ups_waiting"):
+        lines.append(f"Follow-ups: {stats.get('follow_ups_sent', 0)} sent, {stats.get('follow_ups_waiting', 0)} waiting for you")
     for lead in stats["hot_leads"]:
         detail = ", ".join(filter(None, [" + ".join(lead["services"]) or None, lead["budget"]]))
         lines.append(f"🔥 {lead['name']}" + (f" · {detail}" if detail else "") + f" · {lead['status'].replace('_', ' ')}")
     lines.append(f"AI cost: ${stats['cost_usd']:.4f} · failed runs: {stats['failed_runs']}")
-    if attention:
-        lines += ["", f"→ {attention.strip()}"]
     return "\n".join(lines)
 
 
@@ -133,26 +212,26 @@ class DailyDigest(BaseAutomation):
 
         with ctx.step("collect") as s:
             stats = collect_stats(ctx.db, params.hours)
-            s.output = stats
+            candidates = todo_candidates(ctx.db)
+            s.output = {**stats, "candidates": candidates}
 
-        with ctx.step("summarize") as s:
-            attention = None
-            if stats["leads"] or stats["pending_approvals"] or stats["failed_runs"]:
+        with ctx.step("summarize", {"candidates": [c["id"] for c in candidates]}) as s:
+            answer = None
+            if len(candidates) > 1:  # one task needs no ordering
                 try:
-                    facts = {k: stats[k] for k in ("leads", "by_temperature", "replied", "auto_sent",
-                                                   "pending_approvals", "oldest_pending_hours", "failed_runs")}
-                    facts["hot_leads"] = stats["hot_leads"]
-                    attention = s.llm_json(
-                        [{"role": "system", "content": ATTENTION_PROMPT},
-                         {"role": "user", "content": str(facts)}],
-                        Attention, max_tokens=400,
-                    ).parsed.line
-                except Exception as exc:  # the numbers matter more than the advice line
+                    listing = "\n".join(f"{c['id']}: {c['text']} ({c['detail']})" for c in candidates)
+                    answer = s.llm_json(
+                        [{"role": "system", "content": PRIORITIES_PROMPT}, {"role": "user", "content": listing}],
+                        Priorities, max_tokens=600,
+                    ).parsed
+                except Exception as exc:  # the list in code's order is still useful
                     s.output = {"fallback": True, "error": f"{type(exc).__name__}: {exc}"[:300]}
-            else:
-                s.skip("quiet day, nothing needs attention")
-            text = format_digest(stats, attention, datetime.now(timezone.utc))
-            s.output = {**(s.output or {}), "attention": attention, "text": text}
+            elif not candidates:
+                s.skip("nothing to do today")
+            todo = pick_priorities(candidates, answer)
+            text = format_digest(stats, todo, datetime.now(timezone.utc))
+            s.output = {**(s.output or {}), "todo": todo,
+                        "ai_ordered": bool(answer and any(t["why"] for t in todo)), "text": text}
 
         with ctx.step("deliver") as s:
             deliveries = []

@@ -85,6 +85,9 @@ class LeadOut(ORM):
     confidence: float | None
     reply: str | None
     replied: bool
+    replied_at: datetime | None = None
+    followed_up_at: datetime | None = None
+    follow_up_reply: str | None = None
     status: str
     created_at: datetime
 

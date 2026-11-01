@@ -20,7 +20,7 @@ def test_health_reports_database_ok():
 def test_automations_seeded_with_valid_graphs():
     with TestClient(app) as client:
         slugs = [a["slug"] for a in client.get("/api/automations").json()]
-        assert slugs == ["lead_handler", "daily_digest", "system_check"]
+        assert slugs == ["lead_handler", "follow_up", "daily_digest", "system_check"]
 
         for slug in slugs:
             graph = client.get(f"/api/automations/{slug}").json()["graph"]

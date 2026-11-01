@@ -21,6 +21,7 @@ export default function Home() {
   const month = useQuery({ queryKey: ['overview', 30], queryFn: () => api.overview(30), refetchInterval: 30000 })
   const approvals = useQuery({ queryKey: ['approvals', 'pending'], queryFn: () => api.approvals('pending'), refetchInterval: 5000 })
   const leads = useQuery({ queryKey: ['leads', 'recent'], queryFn: () => api.leads(), refetchInterval: 5000 })
+  const todo = useQuery({ queryKey: ['today'], queryFn: api.today, refetchInterval: 15000 })
   const stats = useQuery({ queryKey: ['nodeStats', 'lead_handler'], queryFn: () => api.nodeStats('lead_handler', 7), enabled: tech })
 
   const today = live.data?.today
@@ -96,6 +97,19 @@ export default function Home() {
         </div>
 
         <aside className="stack" style={{ gap: 12 }}>
+          {(todo.data?.todo.length ?? 0) > 0 && (
+            <section className="card pad stack today" style={{ gap: 8 }} aria-label="Today">
+              <h2>Today</h2>
+              <ol className="today-list">
+                {todo.data!.todo.map((t) => {
+                  const to = t.approval_id ? `/needs-you/${t.approval_id}` : t.run_id ? `/conversations/${t.run_id}` : tech ? '/runs' : null
+                  const label = <><b>{t.text}</b><span className="faint"> · {t.detail}</span></>
+                  return <li key={t.id}>{to ? <Link to={to}>{label}</Link> : label}</li>
+                })}
+              </ol>
+              <span className="faint" style={{ fontSize: 12 }}>The same list opens your morning email, put in order by your assistant.</span>
+            </section>
+          )}
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <h2>Needs your OK {pending.length > 0 && <span className="count" style={{ marginLeft: 6 }}>{pending.length}</span>}</h2>
             {pending.length > 1 && <Link to="/needs-you" className="faint">See all</Link>}
