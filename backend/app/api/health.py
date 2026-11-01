@@ -30,9 +30,10 @@ def health(db: Session = Depends(get_db)) -> HealthOut:
     except Exception:
         database = "unavailable"
 
-    redis_status = _check_redis(settings.redis_url)
+    # inline mode runs jobs inside the API (the single-server demo), so Redis isn't expected there
+    redis_status = "not used" if settings.run_mode == "inline" else _check_redis(settings.redis_url)
     # Redis only powers background jobs, so the API is "degraded", not "down", without it
-    overall = "ok" if database == "ok" and redis_status == "ok" else (
+    overall = "ok" if database == "ok" and redis_status in {"ok", "not used"} else (
         "degraded" if database == "ok" else "down"
     )
     return HealthOut(status=overall, database=database, redis=redis_status, env=settings.app_env)

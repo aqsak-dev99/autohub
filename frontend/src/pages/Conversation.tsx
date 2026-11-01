@@ -8,6 +8,7 @@ import { Avatar, ErrorBox } from '../components/ui'
 import { BANDS, duration, json, parseDate, rupees, usd } from '../format'
 import { channelLabel, friendlyReason, language, nextStep, rupeesFromUsd, scoreReasons, statusText } from '../plain'
 import { useTech } from '../tech'
+import { useAuth } from '../auth'
 
 type StoryItem = { key: string; icon: string; title: string; body?: ReactNode; tone?: '' | 'warn' | 'fail' | 'live' | 'skip'; steps: Step[] }
 
@@ -211,6 +212,7 @@ function Chat({ run, lead, approval, showReply }: { run: RunDetail; lead: Lead |
 export default function Conversation() {
   const { runId = '' } = useParams()
   const { on: tech } = useTech()
+  const { isViewer } = useAuth()
   const queryClient = useQueryClient()
   const isLive = (status?: string) => status === 'queued' || status === 'running'
   const run = useQuery({ queryKey: ['run', runId], queryFn: () => api.run(runId),
@@ -246,7 +248,7 @@ export default function Conversation() {
   const reasons = scoreReasons(lead?.score_reasons)
   const step = nextStep(lead, approval)
   const canEmail = String(r.input.contact).includes('@')
-  const ringColor = lead?.temperature === 'hot' ? '#0A4174' : lead?.temperature === 'warm' ? '#4E8EA2' : '#7BBDE8'
+  const ringColor = lead?.temperature === 'hot' ? '#C7E5F2' : lead?.temperature === 'warm' ? '#65A7C2' : '#216A85'
 
   return (
     <>
@@ -259,7 +261,7 @@ export default function Conversation() {
           </div>
         </div>
         <div className="row">
-          {r.status === 'failed' && <button className="btn primary" onClick={() => retry.mutate()} disabled={retry.isPending}>Try again</button>}
+          {r.status === 'failed' && !isViewer && <button className="btn primary" onClick={() => retry.mutate()} disabled={retry.isPending}>Try again</button>}
           <button className="btn" disabled={isLive(r.status) || revealed !== null} onClick={() => setRevealed(0)}>▶ Replay how it happened</button>
         </div>
       </div>
@@ -306,7 +308,7 @@ export default function Conversation() {
             <div className="card pad">
               <h3 style={{ marginBottom: 12 }}>Lead quality</h3>
               <div className="row" style={{ gap: 16, flexWrap: 'nowrap' }}>
-                <div className="ring" style={{ background: `conic-gradient(${ringColor} 0 ${lead.score ?? 0}%, #BDD8E9 ${lead.score ?? 0}% 100%)` }}><div>{lead.score}</div></div>
+                <div className="ring" style={{ background: `conic-gradient(${ringColor} 0 ${lead.score ?? 0}%, rgba(199, 229, 242, 0.1) ${lead.score ?? 0}% 100%)` }}><div>{lead.score}</div></div>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>{lead.temperature[0].toUpperCase() + lead.temperature.slice(1)} lead</div>
                   <span className={`chip ${lead.temperature}`}>{{ hot: 'Worth calling today', warm: 'Worth a follow-up', cold: 'Early stage' }[lead.temperature]}</span>

@@ -4,21 +4,24 @@ POST /api/leads/inbound is the server-to-server intake (n8n, scripts, other syst
 protected by X-AutoHub-Key. The public website form uses /api/forms/contact instead. It answers 202 at once; the Lead Handler runs in the worker.
 """
 import secrets
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth import current_role
 from app.automations.lead_handler import LeadIn, edit_similarity
 from app.config import get_settings
 from app.db import get_db
 from app.engine.dispatch import dispatch, dispatch_resume
 from app.engine.executor import create_run
 from app.knowledge import get_kb
-from app.models import Approval, ApprovalStatus, Lead
+from app.models import Approval, ApprovalStatus, Lead, Run
 from app.schemas import ApprovalOut, LeadOut
 
 router = APIRouter(prefix="/api", tags=["leads"])
@@ -83,10 +86,14 @@ class DecisionIn(BaseModel):
 
 
 @router.post("/approvals/{approval_id}/decision", response_model=ApprovalOut)
-def decide(approval_id: int, body: DecisionIn, background: BackgroundTasks, db: Session = Depends(get_db)):
+def decide(approval_id: int, body: DecisionIn, background: BackgroundTasks, db: Session = Depends(get_db),
+           role: str = Depends(current_role)):
     approval = db.get(Approval, approval_id)
     if approval is None:
         raise HTTPException(404, "Approval not found")
+    if role == "viewer" and approval.payload.get("contact") != TEST_CONTACT:
+        # demo visitors can finish the loop on their own test message, not on anyone else's
+        raise HTTPException(403, "Demo visitors can approve replies to their own test messages. Try it on Home!")
     if approval.status != ApprovalStatus.pending:
         # stops a double-click from sending the reply twice
         raise HTTPException(409, f"Already decided: {approval.status.value}")
@@ -136,11 +143,35 @@ class TestMessageIn(BaseModel):
     name: str = Field(default="Test customer", max_length=60)
 
 
+TEST_CONTACT = "dashboard-test"
+_try_hits: dict[str, deque] = defaultdict(deque)  # per visitor, in memory
+
+
+def _check_try_it_limits(request: Request, db: Session) -> None:
+    """Every test message costs real AI calls, so a public demo needs a ceiling."""
+    settings = get_settings()
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    now, hits = time.monotonic(), _try_hits[ip]
+    while hits and now - hits[0] > 3600:
+        hits.popleft()
+    if len(hits) >= settings.try_it_per_hour:
+        raise HTTPException(429, f"That's {settings.try_it_per_hour} test messages this hour. Please try again a bit later.")
+    midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    if db.bind.dialect.name == "sqlite":
+        midnight = midnight.replace(tzinfo=None)
+    today = db.scalar(select(func.count()).select_from(Run).where(
+        Run.created_at >= midnight, Run.input["contact"].as_string() == TEST_CONTACT))
+    if today >= settings.try_it_per_day:
+        raise HTTPException(429, "The demo has reached today's limit of test messages. Please come back tomorrow.")
+    hits.append(now)
+
+
 @router.post("/test-message", response_model=InboundOut, status_code=202)
-def test_message(body: TestMessageIn, background: BackgroundTasks, db: Session = Depends(get_db)):
-    """'Try it' on the dashboard: the owner plays a customer. Sent as website chat, so the reply
-    is shown on screen and never emailed. (Same protection as the rest of the dashboard.)"""
-    run = create_run(db, "lead_handler", {"channel": "web_chat", "contact": "dashboard-test", "name": body.name,
+def test_message(body: TestMessageIn, request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """'Try it' on the dashboard: play a customer. Sent as website chat, so the reply is shown
+    on screen and never emailed. Open to demo visitors, within the limits above."""
+    _check_try_it_limits(request, db)
+    run = create_run(db, "lead_handler", {"channel": "web_chat", "contact": TEST_CONTACT, "name": body.name,
                                           "message": body.message})
     via = dispatch(run.id, background)
     return InboundOut(run_id=str(run.id), status=run.status.value, dispatched_via=via)

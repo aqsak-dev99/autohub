@@ -53,6 +53,17 @@ class Settings(BaseSettings):
 
     frontend_origin: str = "http://localhost:5173"
 
+    # login (empty ADMIN_PASSWORD = login off, for local development)
+    admin_password: str = ""          # the owner's password for the dashboard
+    secret_key: str = ""              # signs login cookies; set a long random value in production
+    session_days: int = 7
+    demo_mode: bool = False           # adds "Explore the demo": a read-mostly visitor login, no password
+    demo_seed: bool = False           # fill an empty database with sample conversations on start
+
+    # "Try it" limits, so a public demo can't use up the AI budget
+    try_it_per_hour: int = 10         # per visitor (IP)
+    try_it_per_day: int = 200         # for everyone together
+
     @property
     def review_language_set(self) -> set[str]:
         return {x.strip() for x in self.review_languages.split(",") if x.strip()}
@@ -64,6 +75,10 @@ class Settings(BaseSettings):
     @property
     def email_configured(self) -> bool:
         return bool(self.smtp_username and self.smtp_password)
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.admin_password)
 
     @property
     def is_postgres(self) -> bool:

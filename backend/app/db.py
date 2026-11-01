@@ -4,6 +4,7 @@
 which is always closed afterwards, even if the request crashes.
 """
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -11,6 +12,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.config import get_settings
 
 settings = get_settings()
+_BACKEND_DIR = Path(__file__).resolve().parent.parent  # where alembic.ini lives
 
 engine = create_engine(
     settings.database_url,
@@ -33,22 +35,27 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    """Create tables. pgvector extension is enabled first on Postgres (used for RAG in Phase 2)."""
+    """Bring the database schema up to date with Alembic migrations (safe on every start).
+
+    A database created before migrations existed (by the old create_all) is "stamped" as the
+    first migration once, after creating anything it's missing, and then upgraded like any other.
+    """
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import inspect
+
     from app import models  # noqa: F401  (import registers the tables on Base)
 
     if settings.is_postgres:
         with engine.begin() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-    Base.metadata.create_all(bind=engine)
-    if settings.is_postgres:
-        with engine.begin() as conn:
-            for statement in SCHEMA_PATCHES:
-                conn.execute(text(statement))
 
-
-# create_all never changes a table that already exists. Until Alembic arrives (before deploy),
-# column changes to existing tables go here. Each must be safe to run on every start.
-SCHEMA_PATCHES = [
-    # room for long message ids (widened from 64 when longer provider ids appeared)
-    "ALTER TABLE inbound_messages ALTER COLUMN external_id TYPE varchar(128)",
-]
+    config = Config(str(_BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(_BACKEND_DIR / "migrations"))
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        tables = set(inspect(conn).get_table_names())
+        if "alembic_version" not in tables and "runs" in tables:
+            Base.metadata.create_all(bind=conn)
+            command.stamp(config, "0001")
+        command.upgrade(config, "head")

@@ -1,0 +1,34 @@
+# Render Blueprint: Dashboard → New → Blueprint → pick this repo. Render reads this file.
+# The public demo runs as one free web service. Its database is SQLite on the service's own
+# disk, which Render wipes on every restart, so the demo refills itself with sample
+# conversations each time it wakes up (DEMO_SEED) and never needs cleaning.
+services:
+  - type: web
+    name: autohub
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        value: sqlite:////tmp/autohub.db
+      - key: RUN_MODE
+        value: inline            # no Redis worker on the free plan: runs execute inside the API
+      - key: SEND_MODE
+        value: dry_run           # the demo never emails anyone
+      - key: DEMO_MODE
+        value: "true"            # "Explore the demo" button: look around and use Try it, no password
+      - key: DEMO_SEED
+        value: "true"
+      - key: TRY_IT_PER_HOUR
+        value: "10"
+      - key: TRY_IT_PER_DAY
+        value: "150"
+      - key: SECRET_KEY
+        generateValue: true      # Render makes a random one
+      - key: ADMIN_PASSWORD
+        sync: false              # you type it in Render's dashboard; never in this file
+      - key: GROQ_API_KEY
+        sync: false

@@ -6,6 +6,7 @@ import { ago, rupees } from '../format'
 import { BANDS } from '../format'
 import { channelLabel, friendlyReason, language, wants } from '../plain'
 import { useTech } from '../tech'
+import { TEST_CONTACT, useAuth } from '../auth'
 import { Avatar, ErrorBox, StatusChip, TempChip } from './ui'
 
 export type Claim = { text: string; kind: string; supported: boolean }
@@ -14,7 +15,9 @@ export const CHECKED_KINDS = new Set(['fact_about_flowpath', 'commitment'])
 /** One reply waiting for the owner: why it was held, what the customer said, the draft, and the evidence. */
 export function ReviewCard({ approval, compact = false, onDone }: { approval: Approval; compact?: boolean; onDone?: () => void }) {
   const { on: tech } = useTech()
+  const { isViewer } = useAuth()
   const p = approval.payload
+  const locked = isViewer && p.contact !== TEST_CONTACT  // demo visitors decide only on their own test messages
   const queryClient = useQueryClient()
   const [reply, setReply] = useState(p.reply)
   const [editing, setEditing] = useState(!compact)
@@ -40,7 +43,7 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
   const goesTo = p.channel === 'web_chat' ? 'shown in the website chat' : `emailed to ${p.contact}`
 
   return (
-    <div className="card pad stack" style={{ gap: 12, boxShadow: compact ? 'var(--shadow)' : undefined, borderColor: compact ? 'var(--sky-400)' : undefined }}>
+    <div className="card pad stack" style={{ gap: 12, borderColor: compact ? 'rgba(101, 167, 194, 0.45)' : undefined, boxShadow: compact ? '0 0 40px rgba(101, 167, 194, 0.12)' : undefined }}>
       <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
         <Avatar name={p.name || p.contact} size="lg" />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -67,11 +70,11 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
         )}
       </div>
 
-      <div style={{ background: '#F2F9FA', borderRadius: 12, padding: '12px 13px' }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--teal-500)', letterSpacing: '0.04em', marginBottom: 6 }}>
+      <div className="reply-box">
+        <div className="label">
           {pending ? "YOUR ASSISTANT'S REPLY" : 'THE REPLY'}
         </div>
-        {pending && editing ? (
+        {pending && editing && !locked ? (
           <textarea className="field" rows={compact ? 5 : 7} dir="auto" value={reply} onChange={(e) => setReply(e.target.value)} aria-label="Reply" />
         ) : (
           <div dir="auto" style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{pending ? reply : approval.final_payload?.reply ?? p.reply}</div>
@@ -110,7 +113,9 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
         </div>
       )}
 
-      {pending ? (
+      {pending && locked ? (
+        <div className="notice info">This is a sample conversation, so only the owner can send it. Use <b>Try it</b> on Home and you can approve the reply to your own message.</div>
+      ) : pending ? (
         <>
           {!compact && <input className="field" placeholder="Note to yourself (optional): why you changed or skipped it" value={note} onChange={(e) => setNote(e.target.value)} />}
           <ErrorBox error={decide.error} />

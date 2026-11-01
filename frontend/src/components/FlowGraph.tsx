@@ -15,11 +15,11 @@ type HubData = {
 
 // Heat ramp from cool to hot; the border carries the colour so the label stays readable.
 const RAMP = [
-  { bg: '#FFFFFF', border: '#DCE7EF' },
-  { bg: '#EAF4FB', border: '#BDD8E9' },
-  { bg: '#D6EAF7', border: '#7BBDE8' },
-  { bg: '#C2DCEE', border: '#49769F' },
-  { bg: '#A9CBE4', border: '#0A4174' },
+  { bg: 'rgba(9, 63, 82, 0.45)', border: 'rgba(101, 167, 194, 0.22)' },
+  { bg: 'rgba(33, 106, 133, 0.35)', border: '#216A85' },
+  { bg: 'rgba(33, 106, 133, 0.6)', border: '#3E88A6' },
+  { bg: 'rgba(101, 167, 194, 0.42)', border: '#65A7C2' },
+  { bg: 'rgba(199, 229, 242, 0.32)', border: '#C7E5F2' },
 ]
 export const RAMP_COLORS = RAMP.map((r) => r.border)
 
@@ -83,7 +83,7 @@ export function FlowGraph({ automation, steps, runActive, heat, selected, onSele
         else if (value !== null && maxHeat > 0) {
           const level = Math.min(4, Math.round((value / maxHeat) * 4))
           style = { background: RAMP[level].bg, borderColor: RAMP[level].border }
-          if (level === 4) style.boxShadow = '0 0 0 4px rgba(10, 65, 116, 0.18)'
+          if (level === 4) style.boxShadow = '0 0 0 4px rgba(199, 229, 242, 0.16), 0 0 34px rgba(101, 167, 194, 0.6)'
         } else className = 'idle'
       } else if (steps) {
         const step = byNode.get(n.id)
@@ -109,7 +109,7 @@ export function FlowGraph({ automation, steps, runActive, heat, selected, onSele
       const from = byNode.get(e.source)
       const to = byNode.get(e.target)
       const travelled = !!(from && to && to.position === from.position + 1)
-      const color = travelled ? (to?.status === 'waiting' ? '#E39B3A' : '#4E8EA2') : '#BDD8E9'
+      const color = travelled ? (to?.status === 'waiting' ? '#E9A84C' : '#65A7C2') : 'rgba(101, 167, 194, 0.25)'
       return {
         id: e.id,
         source: e.source,
@@ -117,8 +117,8 @@ export function FlowGraph({ automation, steps, runActive, heat, selected, onSele
         label: e.label,
         animated: travelled && !!runActive,
         style: { stroke: color, strokeWidth: travelled ? 2 : 1.5, strokeDasharray: steps && !travelled ? '5 5' : undefined },
-        labelStyle: { fill: travelled ? '#0A4174' : '#6F89A0', fontFamily: 'JetBrains Mono', fontSize: 11 },
-        labelBgStyle: { fill: '#fff' },
+        labelStyle: { fill: travelled ? '#C7E5F2' : '#7598AA', fontFamily: 'JetBrains Mono', fontSize: 11 },
+        labelBgStyle: { fill: '#042933' },
       }
     })
     return { nodes, edges }
@@ -139,7 +139,7 @@ export function FlowGraph({ automation, steps, runActive, heat, selected, onSele
         minZoom={0.3}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#DCE7EF" gap={20} />
+        <Background color="rgba(199, 229, 242, 0.09)" gap={20} />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

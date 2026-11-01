@@ -3,6 +3,8 @@ poll GET /api/runs/{id} (or watch the dashboard) to see it progress."""
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+
+from app.auth import require_owner
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -23,7 +25,8 @@ class TriggerOut(RunOut):
     dispatched_via: str
 
 
-@router.post("/automations/{slug}/runs", response_model=TriggerOut, status_code=202)
+@router.post("/automations/{slug}/runs", response_model=TriggerOut, status_code=202,
+             dependencies=[Depends(require_owner)])
 def trigger_run(
     slug: str,
     body: TriggerIn,
@@ -38,7 +41,8 @@ def trigger_run(
     return TriggerOut(**RunOut.model_validate(run).model_dump(), dispatched_via=via)
 
 
-@router.post("/runs/{run_id}/retry", response_model=TriggerOut, status_code=202)
+@router.post("/runs/{run_id}/retry", response_model=TriggerOut, status_code=202,
+             dependencies=[Depends(require_owner)])
 def retry_run(run_id: uuid.UUID, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Run a failed run again with the same input, e.g. after a rate limit."""
     run = db.get(Run, run_id)

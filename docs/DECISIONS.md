@@ -255,7 +255,38 @@ Someone who messages twice is one prospect; the overview lists their best-scorin
 **Decision:** The Document Extractor (planned Phase 3) was removed from the registry, models, settings and docs before it was built; on startup, retired automations are deleted if they never ran, or hidden if they have history. The System Check now verifies the two models actually used.
 **Why:** With the deadline close, a deployed, evaluated Lead Handler shows more than a second automation without evals. A listed automation that fails with "no implementation" would also make the hub look unfinished. The run engine stays general: adding an automation is still a new class plus a registry entry.
 
+## 61. A self-refilling SQLite demo instead of a hosted database
+**Decision:** The public demo is one free Render web service whose SQLite database sits on the service's own disk. Render wipes that disk on every restart or wake-up, and `DEMO_SEED` refills it with the sample conversations each time. Postgres (with the Redis worker) stays the setup for real use and local development.
+**Why:** Render's free Postgres is deleted after 30 days, which would kill the demo in the middle of application season, and a paid database for a demo isn't justified. A demo that resets itself also never fills up with test messages or needs cleaning. The trade-off, visitors' Try-it conversations disappearing when the service sleeps, is fine for a demo.
+
+## 62. Signed-cookie login with three roles
+**Decision:** The owner logs in with `ADMIN_PASSWORD`; "Explore the demo" gives a viewer role with no password; n8n and scripts use the `X-AutoHub-Key` header. The session is an HMAC-signed cookie (role + expiry), HttpOnly and SameSite=Lax, so there's no session table. Viewers can see everything and use Try it, but can only approve replies to their own test messages and can't save rules. With no password set, login is off.
+**Why:** The approval and rules endpoints change what customers receive, so a public URL needed a login before going live. A viewer role lets an interviewer use the product instead of looking at screenshots, without being able to change the sample data for the next visitor. A third-party auth service would be more moving parts than one owner needs.
+
+## 63. Alembic, with existing databases adopted automatically
+**Decision:** The schema is managed by Alembic migrations, run on every start. A database created earlier by `create_all` (with no `alembic_version` table) is stamped as the first migration once, after creating anything it's missing, then upgraded normally. A test fails if `models.py` and the migrations ever disagree.
+**Why:** The startup patch list (decision 41) couldn't express real changes safely. Adopting old databases automatically means the codespace database (and its test data) keeps working without a manual step.
+
+## 64. Limits on "Try it"
+**Decision:** Test messages are limited per visitor (10 an hour, by IP) and in total (150 a day on the demo), with friendly messages when the limit is reached.
+**Why:** Every test message is four or more real AI calls. Without a ceiling, one script or one enthusiastic visitor could use up the Groq free quota and break the demo for everyone else.
+
+## 65. Evals measure safety per language, not just accuracy
+**Decision:** The eval set is small and hand-labelled (40 messages, 10 per language, plus 16 fact-check replies with half planted), and runs through the real pipeline rather than testing prompts in isolation. Besides accuracy (intent, language, services, budget), it reports the fact checker's catch rate and false-alarm rate, and one hard number: replies sent on their own that the rules say a person must see. The report turns the numbers into a per-language recommendation for the Rules page.
+**Why:** "Is the AI good?" isn't actionable; "is it safe to stop reviewing Urdu replies?" is, and that's the decision the review rules (decision 24) were waiting on. A misread language is the most dangerous failure (an Urdu message classified as English skips Urdu review), so it shows up as an unsafe send, not just a missed label. Forty labelled cases are enough to see a language that's clearly worse; more would mostly cost free-plan quota.
+
+## 66. CI without secrets; evals by hand
+**Decision:** CI runs the unit tests (with a scripted fake of the Groq SDK), the dashboard build, and builds and starts the production image. The evals call the real models, so they're a separate workflow started by hand with a repository secret.
+**Why:** Tests must be fast, free and deterministic on every push; evals are slow, cost quota and vary run to run. Building the real image in CI catches a broken Dockerfile before Render does.
+
+## 67. "Abyss": a dark theme with one source of light
+**Decision:** The dashboard moved from a light theme to a deep sea-blue dark one (#021024 → #C7E5F2): glass cards over a dark background, an aurora of light at the top of Home that the cards float over, and a cyan glow used only where the AI is actually working (busy steps on the live canvas, the step running in a conversation, the selected node). Warm amber stays reserved for "this needs you". The login page is split: the form on one side, generated line art on the other.
+**Why:** The light version read as a standard admin template. Dark with restrained glow gives the product a recognisable identity, and keeping the glow tied to live AI activity means it carries information rather than decoration. The line art is SVG generated in code, so the login page loads no images.
+
+## 68. An opening animation that never gets in the way
+**Decision:** A short splash plays over the app while it loads: glowing rings ripple out, a spark becomes the ✦ mark, and the name slides out. It plays once per browser session, waits for the app to be ready rather than covering it longer than needed, can be skipped with a click or any key, and becomes a plain fade for people who turn off motion in their system settings. It lasts about 1.7 s and is CSS and SVG only.
+**Why:** It gives the demo a memorable first second and covers the free server's wake-up delay, but an animation that repeats on every page load or can't be skipped quickly becomes something users resent.
+
 ## Known trade-offs to revisit
-- **`create_all` instead of migrations.** Fine while the schema is changing daily (Phase 2 needed a one-time database reset to add lead columns); Alembic should be added before deploying so schema changes are versioned.
-- **Partial authentication.** Server-to-server intake can require an `X-AutoHub-Key` header (`INBOUND_API_KEY`) and the public form is rate limited, but the dashboard and approval endpoints are still open (anyone with the URL can approve a reply) and need a login before public deployment.
+- **One owner account.** Login has a single owner password; a business with staff would need user accounts and an audit trail of who approved what.
 - **Prices hard-coded.** The pricing table must be updated when Groq changes rates; unknown models are flagged as unpriced rather than shown as free.

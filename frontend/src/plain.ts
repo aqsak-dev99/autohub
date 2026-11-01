@@ -4,9 +4,9 @@ import { BUSINESS_NAME, PKR_PER_USD } from './config'
 import { LANGUAGES, SERVICES } from './format'
 
 export const CHANNEL: Record<string, { label: string; icon: string; color: string }> = {
-  email: { label: 'Email', icon: '@', color: '#0A4174' },
-  web_form: { label: 'Website form', icon: '⌂', color: '#49769F' },
-  web_chat: { label: 'Website chat', icon: '💬', color: '#4E8EA2' },
+  email: { label: 'Email', icon: '@', color: '#216A85' },
+  web_form: { label: 'Website form', icon: '⌂', color: '#3E88A6' },
+  web_chat: { label: 'Website chat', icon: '💬', color: '#185670' },
 }
 export const channelLabel = (c: string | null | undefined) => (c && CHANNEL[c]?.label) || c || '—'
 
@@ -92,7 +92,7 @@ export function nextStep(lead: Lead | null, approval: Approval | null): string |
   return 'Nothing needed: the reply covers it.'
 }
 
-const AVATAR_COLORS = ['#0A4174', '#49769F', '#4E8EA2', '#6EA2B3', '#2C5A7E', '#3B7A8C']
+const AVATAR_COLORS = ['#216A85', '#2B7D9C', '#3E88A6', '#185670', '#0E4A61', '#4F95B1']
 export function avatarColor(seed: string): string {
   let h = 0
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0

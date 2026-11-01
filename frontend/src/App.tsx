@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, NavLink, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { api } from './api'
 import { TechSwitch } from './components/ui'
@@ -14,6 +14,9 @@ import RulesPage from './pages/Rules'
 import RunDetailPage from './pages/RunDetail'
 import Runs from './pages/Runs'
 import { useTech } from './tech'
+import { useAuth } from './auth'
+import Login from './pages/Login'
+import { Splash } from './components/Splash'
 
 // old links (/approvals/7) keep working
 function ApprovalRedirect() {
@@ -22,10 +25,23 @@ function ApprovalRedirect() {
 }
 
 export default function App() {
+  const { me, loading } = useAuth()
+  return (
+    <>
+      {/* plays over the app while it loads, once per visit */}
+      <Splash ready={!loading} />
+      {loading ? null : me?.login_required && !me.role ? <Login /> : <Shell />}
+    </>
+  )
+}
+
+function Shell() {
   const { on: tech } = useTech()
+  const { me, isViewer, refresh } = useAuth()
   // the "Needs you" count stays current on every page
   const pending = useQuery({ queryKey: ['approvals', 'pending'], queryFn: () => api.approvals('pending'), refetchInterval: 5000 })
   const count = pending.data?.length ?? 0
+  const logout = useMutation({ mutationFn: api.logout, onSuccess: refresh })
 
   return (
     <>
@@ -42,9 +58,22 @@ export default function App() {
         </nav>
         <div className="top-right">
           <TechSwitch />
-          <span className="me" title={OWNER_NAME}>{OWNER_NAME[0]}</span>
+          {me?.login_required ? (
+            <button className="me" title={isViewer ? 'Leave the demo' : 'Log out'} onClick={() => logout.mutate()} style={{ border: 0, cursor: 'pointer' }}>
+              {isViewer ? '👋' : OWNER_NAME[0]}
+            </button>
+          ) : (
+            <span className="me" title={OWNER_NAME}>{OWNER_NAME[0]}</span>
+          )}
         </div>
       </header>
+      {isViewer && (
+        <div className="demo-banner" role="status">
+          <span>👋 You’re exploring a demo with sample conversations. Use <b>Try it</b> on Home to write as a customer; nothing is emailed.</span>
+          <span className="spacer" />
+          <button onClick={() => logout.mutate()}>Owner login</button>
+        </div>
+      )}
       <main className="page">
         <Routes>
           <Route path="/" element={<Home />} />

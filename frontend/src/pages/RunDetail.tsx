@@ -7,7 +7,7 @@ import { ErrorBox, Stat, StatusChip } from '../components/ui'
 import { ago, duration, json, usd } from '../format'
 
 const STEP_COLOR: Record<string, string> = {
-  succeeded: '#4E8EA2', running: '#0A4174', waiting: '#E39B3A', failed: '#B4432F', skipped: '#BDD8E9',
+  succeeded: '#65A7C2', running: '#C7E5F2', waiting: '#E9A84C', failed: '#F08B7A', skipped: 'rgba(101, 167, 194, 0.25)',
 }
 
 function StepPanel({ step, label }: { step: Step | undefined; label: string }) {
@@ -90,11 +90,11 @@ export default function RunDetailPage() {
         <section className="card" style={{ minWidth: 0 }} aria-label="Run replay">
           <div className="card-head">
             <span className="legend">
-              <span><i style={{ background: '#4E8EA2' }} />Done</span>
-              <span><i style={{ background: '#0A4174' }} />Running</span>
-              <span><i style={{ background: '#E39B3A' }} />Waiting</span>
-              <span><i style={{ background: '#B4432F' }} />Failed</span>
-              <span><i style={{ border: '1px dashed #6F89A0' }} />Skipped / not reached</span>
+              <span><i style={{ background: '#65A7C2' }} />Done</span>
+              <span><i style={{ background: '#C7E5F2' }} />Running</span>
+              <span><i style={{ background: '#E9A84C' }} />Waiting</span>
+              <span><i style={{ background: '#F08B7A' }} />Failed</span>
+              <span><i style={{ border: '1px dashed #7598AA' }} />Skipped / not reached</span>
             </span>
             <span className="faint">{active ? 'Live: updating as it runs' : 'Click a node to inspect it'}</span>
           </div>

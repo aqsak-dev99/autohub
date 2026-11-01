@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.automations.lead_rules import replay_route
+from app.auth import require_owner
 from app.config import get_settings
 from app.db import get_db
 from app.models import Automation, Lead, Run, RunStep
@@ -24,7 +25,7 @@ def read_rules(db: Session = Depends(get_db)):
     return get_rules(db, get_settings())
 
 
-@router.put("", response_model=LeadRules)
+@router.put("", response_model=LeadRules, dependencies=[Depends(require_owner)])
 def update_rules(body: LeadRules, db: Session = Depends(get_db)):
     return save_rules(db, body)
 

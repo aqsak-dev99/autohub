@@ -107,3 +107,18 @@ def test_test_message_and_conversation(client, monkeypatch):
     run_id = resp.json()["run_id"]
     body = client.get(f"/api/conversations/{run_id}").json()
     assert body == {"lead": None, "approval": None}  # nothing yet: the run hasn't executed
+
+
+def test_demo_seed_runs_the_real_pipeline_and_only_fills_an_empty_db(client):
+    from app.demo import CONVERSATIONS, seed_demo
+    from app.models import Approval, Lead, Run
+
+    added = seed_demo(SessionLocal, reset=True)
+    assert added == len(CONVERSATIONS)
+    with SessionLocal() as db:
+        assert db.query(Lead).count() == len(CONVERSATIONS)
+        assert db.query(Run).filter_by(status="failed").count() == 0
+        assert db.query(Approval).filter_by(status="pending").count() >= 2
+        steps = {s.node_id for r in db.query(Run) for s in r.steps}
+        assert {"revise", "translate", "approval"} <= steps
+    assert seed_demo(SessionLocal) == 0  # never doubles up

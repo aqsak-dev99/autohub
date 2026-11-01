@@ -104,13 +104,13 @@ export function LiveFlow({ live, pending, stats }: Props) {
     const busy = (id: string) => (at[id]?.length ?? 0) > 0
     const line = (source: string, target: string, opts: Partial<Edge> & { color?: string; dashed?: boolean } = {}): Edge => ({
       id: `${source}-${target}`, source, target, type: 'smoothstep', label: opts.label,
-      animated: busy(target), style: { stroke: opts.color ?? '#BDD8E9', strokeWidth: 2, strokeDasharray: opts.dashed ? '6 5' : undefined },
-      labelStyle: { fill: '#6F89A0', fontSize: 11.5, fontFamily: 'Inter' }, labelBgStyle: { fill: '#fff' }, labelBgPadding: [5, 2],
+      animated: busy(target), style: { stroke: opts.color ?? 'rgba(101, 167, 194, 0.38)', strokeWidth: 2, strokeDasharray: opts.dashed ? '6 5' : undefined },
+      labelStyle: { fill: '#9CC2D3', fontSize: 11.5, fontFamily: 'Inter' }, labelBgStyle: { fill: '#042933' }, labelBgPadding: [5, 2], labelBgBorderRadius: 5,
     })
     const edges: Edge[] = [
       line('in-email', 'reads'), line('in-web_form', 'reads'), line('in-web_chat', 'reads'),
       line('reads', 'knows'), line('knows', 'writes'), line('writes', 'checks'),
-      line('checks', 'send', { label: 'sure → send', color: '#6EA2B3' }),
+      line('checks', 'send', { label: 'sure → send', color: '#65A7C2' }),
       line('checks', 'ask', { label: 'unsure → you', color: '#E39B3A', dashed: true }),
       line('ask', 'send', { label: 'you approve', dashed: true }),
       line('send', 'saved'), line('ask', 'saved', { dashed: true }),
@@ -130,7 +130,7 @@ export function LiveFlow({ live, pending, stats }: Props) {
           else if (tech) navigate('/automations/lead_handler')
         }}
       >
-        <Background color="#DCE7EF" gap={20} size={1.4} />
+        <Background color="rgba(199, 229, 242, 0.09)" gap={20} size={1.4} />
       </ReactFlow>
     </div>
   )

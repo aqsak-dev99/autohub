@@ -1,0 +1,31 @@
+# Evals use the real Groq models, so they run only when started by hand:
+# GitHub → Actions → Evals → Run workflow. Needs the GROQ_API_KEY repository secret.
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Cases per language (empty = all 10)"
+        required: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      - name: run evals
+        working-directory: backend
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python -m evals.run ${{ inputs.limit && format('--limit {0}', inputs.limit) || '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            backend/evals/RESULTS.md
+            backend/evals/results.json

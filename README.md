@@ -106,7 +106,7 @@ frontend/        React dashboard: live flow, conversation X-ray, approvals, lead
 ## Dashboard
 `docker compose up` also starts the dashboard on port **5173** (in Codespaces: Ports tab → 5173 → globe icon).
 
-Built for the **business owner**, with the engineering one switch away. Plain words, rupees and next steps by default; flip **Technical details** (top right) and every screen also shows models, tokens, latency, raw step data, run graphs and heatmaps.
+Built for the **business owner**, with the engineering one switch away. Dark "Abyss" theme: glass cards, and a glow only where the AI is working. Plain words, rupees and next steps by default; flip **Technical details** (top right) and every screen also shows models, tokens, latency, raw step data, run graphs and heatmaps.
 
 | Page | For the owner | With Technical details on |
 |---|---|---|
@@ -120,6 +120,25 @@ Built for the **business owner**, with the engineering one switch away. Plain wo
 **Try it:** the button on Home lets anyone play a customer (examples in all 4 languages) and watch the reply being built; it's answered as website chat, so nothing is emailed.
 
 Stack: React 19, TypeScript, Vite, @xyflow/react (React Flow), TanStack Query; plain CSS, no UI kit. Without Docker: `cd frontend && npm install && npm run dev` (expects the API on localhost:8000). Owner name, business name and the rupee rate are in `frontend/src/config.ts`.
+
+## Evals: does it actually work?
+Two hand-labelled sets in `backend/evals/`: **40 customer messages** (10 each in English, Roman Urdu, Urdu and Arabic) run through the full Lead Handler, and **16 replies** for the fact checker, half with a planted false claim (a guarantee, an invented price, an office that doesn't exist).
+
+```bash
+docker compose exec api python -m evals.run            # real Groq models, about 10 minutes on the free plan
+docker compose exec api python -m evals.run --limit 2  # quick check
+```
+It scores, per language: intent, language detection, services and budget extraction, **how often the fact check catches a planted claim and how often it raises a false alarm**, how many replies went out on their own, and the one number that must stay at zero: replies sent alone that should have gone to a person. The summary is written to [backend/evals/RESULTS.md](backend/evals/RESULTS.md) and says, per language, whether the evidence supports turning off review for it on the Rules page. (Also runnable from GitHub: Actions → Evals.)
+
+## CI
+GitHub Actions on every push: backend tests (no key needed: SQLite and a scripted fake of the Groq SDK), dashboard type-check and build, and the production Docker image built and started with a `/health` check.
+
+## Live demo and deploying
+One Render web service runs the API and the dashboard together (`Dockerfile`, `render.yaml`). Visitors can **Explore the demo** without a password: sample conversations that reload on every restart, and **Try it** with real AI replies (rate limited). The owner logs in with a password. Step by step: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+- Login: signed cookies, three roles (owner, demo visitor, machine key for n8n); off when `ADMIN_PASSWORD` is empty (local development).
+- Database schema: Alembic migrations in `backend/migrations`, applied on start; older databases are adopted automatically.
+- Sample data: `python -m scripts.seed_demo` (or `DEMO_SEED=true`) runs the real Lead Handler with pre-written AI answers, so it costs nothing.
 
 ## Design decisions
 Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
@@ -140,5 +159,5 @@ Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
 - [~] Phase 3: Document Extractor: dropped to focus on one automation done well ([decision 60](docs/DECISIONS.md))
 - [x] Phase 4: Channels: email + website form (live), n8n digest
 - [x] Phase 5: Dashboard + React Flow run visualizer
-- [ ] Phase 6: Evals + CI
-- [ ] Phase 7: Deploy + demo
+- [x] Phase 6: Evals (4 languages, fact-checker accuracy) + CI
+- [x] Phase 7: Deploy: login, migrations, Render blueprint, self-refilling demo

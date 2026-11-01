@@ -1,0 +1,40 @@
+{"id": "en-01", "language": "english", "message": "Hi, we run a skincare brand online and want to grow Instagram and run Meta ads. Budget is around Rs 300,000 a month and we'd like to start within two weeks. Can we get on a call?", "intent": ["new_business"], "services": ["social-media", "paid-advertising"], "budget_pkr": 300000}
+{"id": "en-02", "language": "english", "message": "Where is your office, and what are your opening hours?", "intent": ["general_question"], "services": [], "budget_pkr": null}
+{"id": "en-03", "language": "english", "message": "Our October campaign report still hasn't arrived. Can someone look into it?", "intent": ["existing_client"], "must_review": true}
+{"id": "en-04", "language": "english", "message": "Are you hiring a social media intern? I'm a final-year marketing student.", "intent": ["job_applicant"]}
+{"id": "en-05", "language": "english", "message": "Can you build us a Shopify website for our furniture store?", "intent": ["new_business", "general_question"], "unoffered": true, "must_review": true}
+{"id": "en-06", "language": "english", "message": "Get 10,000 real followers for just $5!!! Limited offer, click bit.ly/f0llow now", "intent": ["spam"]}
+{"id": "en-07", "language": "english", "message": "We're a dental clinic in Johar Town and want to show up on Google when people search for dentists nearby. We can spend about 80k a month.", "intent": ["new_business"], "services": ["seo"], "budget_pkr": 80000}
+{"id": "en-08", "language": "english", "message": "Hello, we sell stock photo subscriptions to agencies. Would flowpath be interested in a partnership?", "intent": ["vendor_or_partnership"]}
+{"id": "en-09", "language": "english", "message": "I own a burger restaurant and want TikTok ads for our new branch. Budget is 2 lakh per month.", "intent": ["new_business"], "services": ["paid-advertising"], "budget_pkr": 200000}
+{"id": "en-10", "language": "english", "message": "What's the price of your SEO service?", "intent": ["new_business", "general_question"], "services": ["seo"], "budget_pkr": null}
+{"id": "ru-01", "language": "roman_urdu", "message": "Salam, mera clothing brand hai, Instagram aur Facebook ads chahiye, budget 2 lakh mahana hai", "intent": ["new_business"], "services": ["paid-advertising"], "budget_pkr": 200000}
+{"id": "ru-02", "language": "roman_urdu", "message": "Aap ka office kahan hai? Kya main aa kar mil sakta hun?", "intent": ["general_question"], "services": [], "budget_pkr": null}
+{"id": "ru-03", "language": "roman_urdu", "message": "Bhai humare ads kal se band hain, account mein koi masla hai, jaldi check karein", "intent": ["existing_client"], "must_review": true}
+{"id": "ru-04", "language": "roman_urdu", "message": "Kya aap ko video editor ki zarurat hai? Main 2 saal se reels edit kar raha hun", "intent": ["job_applicant"]}
+{"id": "ru-05", "language": "roman_urdu", "message": "Mujhe apni company ke liye mobile app banwani hai, kitna kharcha hoga?", "intent": ["new_business", "general_question"], "unoffered": true, "must_review": true}
+{"id": "ru-06", "language": "roman_urdu", "message": "Mubarak ho! Aap ne 50,000 ka inaam jeeta hai, abhi is link par click karein bit.ly/inaam", "intent": ["spam"]}
+{"id": "ru-07", "language": "roman_urdu", "message": "Hamari bakery ke liye Google pe ranking chahiye, 50 hazar tak budget hai", "intent": ["new_business"], "services": ["seo"], "budget_pkr": 50000}
+{"id": "ru-08", "language": "roman_urdu", "message": "SEO aur social media dono ka kitna kharcha aayega? Real estate ka kaam hai humara", "intent": ["new_business", "general_question"], "services": ["seo", "social-media"], "budget_pkr": null}
+{"id": "ru-09", "language": "roman_urdu", "message": "Hello, hum log school chalate hain, admissions ke liye ads chalwane hain, 1.5 lakh budget hai", "intent": ["new_business"], "services": ["paid-advertising"], "budget_pkr": 150000}
+{"id": "ru-10", "language": "roman_urdu", "message": "Kya aap log TikTok account bhi handle karte ho? Hamara cosmetics ka business hai", "intent": ["new_business", "general_question"], "services": ["social-media"]}
+{"id": "ur-01", "language": "urdu", "message": "السلام علیکم، مجھے اپنے کپڑوں کے برانڈ کے لیے انسٹاگرام مارکیٹنگ چاہیے۔ بجٹ دو لاکھ روپے ماہانہ ہے۔", "intent": ["new_business"], "services": ["social-media"], "budget_pkr": 200000, "must_review": true}
+{"id": "ur-02", "language": "urdu", "message": "آپ کا دفتر کہاں ہے اور آپ کب کھلے ہوتے ہیں؟", "intent": ["general_question"], "services": [], "budget_pkr": null, "must_review": true}
+{"id": "ur-03", "language": "urdu", "message": "ہماری اشتہاری مہم کی رپورٹ ابھی تک نہیں ملی، براہ کرم چیک کریں۔", "intent": ["existing_client"], "must_review": true}
+{"id": "ur-04", "language": "urdu", "message": "کیا آپ کے ہاں ویڈیو ایڈیٹر کی نوکری خالی ہے؟", "intent": ["job_applicant"], "must_review": true}
+{"id": "ur-05", "language": "urdu", "message": "ہمیں اپنی دکان کے لیے ویب سائٹ بنوانی ہے۔ آپ کتنے پیسے لیں گے؟", "intent": ["new_business", "general_question"], "unoffered": true, "must_review": true}
+{"id": "ur-06", "language": "urdu", "message": "مبارک ہو! آپ نے نئی گاڑی جیت لی ہے، ابھی اس لنک پر کلک کریں bit.ly/gari", "intent": ["spam"]}
+{"id": "ur-07", "language": "urdu", "message": "میرے ریسٹورنٹ کے لیے گوگل پر اشتہارات چلانے ہیں، بجٹ ایک لاکھ روپے ماہانہ ہے۔", "intent": ["new_business"], "services": ["paid-advertising"], "budget_pkr": 100000, "must_review": true}
+{"id": "ur-08", "language": "urdu", "message": "ہمارا کلینک ہے، گوگل پر اوپر آنے کی فیس کیا ہے؟", "intent": ["new_business", "general_question"], "services": ["seo"], "budget_pkr": null, "must_review": true}
+{"id": "ur-09", "language": "urdu", "message": "ہم نیا کیفے کھول رہے ہیں، سوشل میڈیا اور اشتہارات دونوں چاہئیں، ڈیڑھ لاکھ روپے بجٹ ہے۔", "intent": ["new_business"], "services": ["social-media", "paid-advertising"], "budget_pkr": 150000, "must_review": true}
+{"id": "ur-10", "language": "urdu", "message": "ہم کیمرے کرائے پر دیتے ہیں، کیا آپ ہمارے ساتھ شراکت کرنا چاہیں گے؟", "intent": ["vendor_or_partnership"], "must_review": true}
+{"id": "ar-01", "language": "arabic", "message": "مرحبا، نحن متجر عطور في دبي ونرغب في إعلانات على إنستغرام وتيك توك. هل تعملون مع عملاء خارج باكستان؟", "intent": ["new_business"], "services": ["paid-advertising"], "must_review": true}
+{"id": "ar-02", "language": "arabic", "message": "أين يقع مكتبكم وما هي ساعات العمل؟", "intent": ["general_question"], "services": [], "budget_pkr": null, "must_review": true}
+{"id": "ar-03", "language": "arabic", "message": "حملتنا الإعلانية متوقفة منذ أمس، الرجاء المساعدة بسرعة.", "intent": ["existing_client"], "must_review": true}
+{"id": "ar-04", "language": "arabic", "message": "هل لديكم وظيفة شاغرة لمصمم جرافيك؟", "intent": ["job_applicant"], "must_review": true}
+{"id": "ar-05", "language": "arabic", "message": "نريد تطبيقاً للهاتف لمطعمنا، كم التكلفة؟", "intent": ["new_business", "general_question"], "unoffered": true, "must_review": true}
+{"id": "ar-06", "language": "arabic", "message": "تهانينا! لقد ربحت جائزة نقدية، اضغط على الرابط الآن لاستلامها bit.ly/prize", "intent": ["spam"]}
+{"id": "ar-07", "language": "arabic", "message": "نحتاج إلى تحسين محركات البحث لعيادتنا في الرياض حتى يجدنا المرضى على جوجل.", "intent": ["new_business"], "services": ["seo"], "must_review": true}
+{"id": "ar-08", "language": "arabic", "message": "كم تكلفة إدارة حسابات التواصل الاجتماعي لمقهى صغير؟", "intent": ["new_business", "general_question"], "services": ["social-media"], "budget_pkr": null, "must_review": true}
+{"id": "ar-09", "language": "arabic", "message": "نحن شركة عقارات ونريد إعلانات على جوجل لمشروعنا الجديد.", "intent": ["new_business"], "services": ["paid-advertising"], "must_review": true}
+{"id": "ar-10", "language": "arabic", "message": "نقدم خدمات الطباعة للشركات، هل تهتمون بالتعاون معنا؟", "intent": ["vendor_or_partnership"], "must_review": true}

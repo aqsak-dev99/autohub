@@ -25,10 +25,24 @@ export function Avatar({ name, size = '' }: { name: string | null | undefined; s
   return <span className={`avatar ${size}`} style={{ background: avatarColor(name || '?') }} aria-hidden>{initials(name)}</span>
 }
 
-export function Kpi({ label, value, hint, tech }: { label: string; value: ReactNode; hint?: ReactNode; tech?: ReactNode }) {
+/** A tiny trend line for a KPI card: the shape over the last days, no axes. */
+function Spark({ values }: { values: number[] }) {
+  if (values.length < 2 || values.every((v) => v === 0)) return null
+  const max = Math.max(...values), min = Math.min(...values)
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 84 + 1},${28 - ((v - min) / (max - min || 1)) * 24}`).join(' ')
+  return (
+    <svg className="spark" viewBox="0 0 86 30" aria-hidden>
+      <defs><linearGradient id="spark-g" x1="0" x2="1"><stop offset="0" stopColor="#216A85" /><stop offset="1" stopColor="#C7E5F2" /></linearGradient></defs>
+      <polyline points={pts} fill="none" stroke="url(#spark-g)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function Kpi({ label, value, hint, tech, spark }: { label: string; value: ReactNode; hint?: ReactNode; tech?: ReactNode; spark?: number[] }) {
   const { on } = useTech()
   return (
     <div className="card kpi">
+      {spark && <Spark values={spark} />}
       <span className="label">{label}</span>
       <span className="value">{value}</span>
       {hint && <span className="hint">{hint}</span>}
@@ -74,8 +88,8 @@ export function RunsChart({ series }: { series: { date: string; runs: number; fa
           return (
             <g key={d.date}>
               <title>{`${d.date}: ${d.runs} runs, ${d.failed} failed`}</title>
-              <rect x={i * w + w * 0.2} y={50 - h} width={w * 0.6} height={h} rx={0.6} fill="#0A4174" />
-              {d.failed > 0 && <rect x={i * w + w * 0.2} y={50 - fh} width={w * 0.6} height={fh} rx={0.6} fill="#B4432F" />}
+              <rect x={i * w + w * 0.2} y={50 - h} width={w * 0.6} height={h} rx={0.6} fill="#65A7C2" />
+              {d.failed > 0 && <rect x={i * w + w * 0.2} y={50 - fh} width={w * 0.6} height={fh} rx={0.6} fill="#F08B7A" />}
             </g>
           )
         })}

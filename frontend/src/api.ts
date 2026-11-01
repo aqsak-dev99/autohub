@@ -161,7 +161,13 @@ export type RulesPreview = {
 
 export type Conversation = { lead: Lead | null; approval: Approval | null }
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message)
+  }
+}
+
+export type Me = { role: 'owner' | 'viewer' | null; login_required: boolean; demo_available: boolean }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -176,12 +182,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* not JSON */
     }
-    throw new ApiError(detail)
+    // a session that expired mid-use: let the app show the login screen again
+    if (response.status === 401 && !path.startsWith('/api/auth')) window.dispatchEvent(new Event('autohub:logged-out'))
+    throw new ApiError(detail, response.status)
   }
   return response.json() as Promise<T>
 }
 
 export const api = {
+  me: () => request<Me>('/api/auth/me'),
+  login: (password: string) => request<Me>('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  demo: () => request<Me>('/api/auth/demo', { method: 'POST' }),
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
   automations: () => request<Automation[]>('/api/automations'),
   automation: (slug: string) => request<AutomationDetail>(`/api/automations/${slug}`),
   runs: (params: { automation?: string; status?: string; limit?: number } = {}) => {

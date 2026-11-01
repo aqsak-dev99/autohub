@@ -5,6 +5,7 @@ import { api, type Rules } from '../api'
 import { ErrorBox } from '../components/ui'
 import { LANGUAGES } from '../format'
 import { useTech } from '../tech'
+import { useAuth } from '../auth'
 
 const LANGS = ['english', 'roman_urdu', 'urdu', 'arabic']
 
@@ -17,6 +18,7 @@ function sureness(v: number): string {
 
 export default function RulesPage() {
   const { on: tech } = useTech()
+  const { isViewer } = useAuth()
   const queryClient = useQueryClient()
   const saved = useQuery({ queryKey: ['rules'], queryFn: api.rules })
   const [draft, setDraft] = useState<Rules | null>(null)
@@ -48,9 +50,10 @@ export default function RulesPage() {
         </div>
         <div className="row">
           {changed && <button className="btn" onClick={() => setDraft(saved.data!)}>Undo changes</button>}
-          <button className="btn primary" disabled={!changed || save.isPending} onClick={() => save.mutate()}>{save.isSuccess && !changed ? 'Saved ✓' : 'Save rules'}</button>
+          <button className="btn primary" disabled={!changed || save.isPending || isViewer} title={isViewer ? 'Only the owner can save rules. Try changing them to see the preview.' : undefined} onClick={() => save.mutate()}>{save.isSuccess && !changed ? 'Saved ✓' : 'Save rules'}</button>
         </div>
       </div>
+      {isViewer && <div className="notice info">Demo: change anything to see what last week would have looked like. Only the owner can save.</div>}
       <ErrorBox error={save.error || preview.error} />
 
       <div className="home-grid">
@@ -103,7 +106,7 @@ export default function RulesPage() {
 
         <aside className="stack" style={{ gap: 14 }}>
           <div className="whatif">
-            <h3 style={{ color: 'var(--steel-500)' }}>If these rules had been on last week</h3>
+            <h3 style={{ color: 'var(--sky)' }}>If these rules had been on last week</h3>
             {!p ? <div className="faint" style={{ marginTop: 8 }}>Working it out…</div> : p.replies === 0 ? (
               <div className="muted" style={{ marginTop: 8 }}>No replies in the last 7 days to compare with yet. Send a few test messages first.</div>
             ) : (

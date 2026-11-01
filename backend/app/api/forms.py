@@ -58,6 +58,9 @@ THANKS = "Thanks! We'll reply to your email shortly."
 def _check_origin(request: Request) -> None:
     allowed = {o.strip().rstrip("/") for o in get_settings().form_allowed_origins.split(",") if o.strip()}
     origin = (request.headers.get("origin") or "").rstrip("/")
+    if not allowed and get_settings().app_env == "production":
+        # a public server must say which site may use its form, or anyone could
+        raise HTTPException(403, "The contact form isn't switched on for this server (set FORM_ALLOWED_ORIGINS)")
     if allowed and origin not in allowed:
         raise HTTPException(403, "This form can only be sent from flowpath's website")
 
