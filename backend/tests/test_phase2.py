@@ -46,6 +46,10 @@ def judge(unsupported=0, language_matches=True, extra=None):
     return {"claims": claims + (extra or []), "language_matches": language_matches}
 
 
+TRANSLATION = {"message_en": "Hello, we want Instagram ads. How much is it?",
+               "reply_en": "Thanks! Most clients spend Rs 150,000 to Rs 400,000 a month. Team flowpath"}
+
+
 @pytest.fixture
 def client():
     with TestClient(app) as c:
@@ -57,6 +61,10 @@ def run_lead(script, payload=None):
     with SessionLocal() as db:
         run_id = executor.create_run(db, "lead_handler", payload or ENGLISH_LEAD).id
     status = executor.execute_run(run_id, llm=llm)
+    # the revise and translate steps swallow errors by design; make sure a test never hides one that way
+    with SessionLocal() as db:
+        for step in db.get(Run, run_id).steps:
+            assert "Unexpected extra LLM call" not in str(step.output or ""), (step.node_id, step.output)
     return run_id, status, llm
 
 
@@ -87,7 +95,8 @@ def test_confident_grounded_reply_is_auto_sent(client):
 
 
 def test_low_confidence_pauses_then_approve_sends(client, monkeypatch):
-    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    # the automatic fix runs but the re-check still finds the promise, so a person decides
+    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     assert status == "waiting_approval"
     run, steps, lead, approval = load(run_id)
     assert steps[-1] == ("approval", StepStatus.waiting)
@@ -108,7 +117,7 @@ def test_low_confidence_pauses_then_approve_sends(client, monkeypatch):
 
 
 def test_edit_is_sent_and_similarity_recorded(client, monkeypatch):
-    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     approval_id = load(run_id)[3].id
     monkeypatch.setattr(executor, "get_llm", lambda: make_llm([]))
     edited = GOOD_REPLY.replace("tomorrow", "on Thursday at 3 pm")
@@ -121,7 +130,7 @@ def test_edit_is_sent_and_similarity_recorded(client, monkeypatch):
 
 
 def test_reject_saves_without_sending(client, monkeypatch):
-    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     approval_id = load(run_id)[3].id
     monkeypatch.setattr(executor, "get_llm", lambda: make_llm([]))
     client.post(f"/api/approvals/{approval_id}/decision", json={"action": "reject", "note": "spam-ish"})
@@ -133,7 +142,7 @@ def test_reject_saves_without_sending(client, monkeypatch):
 
 
 def test_second_decision_is_refused(client, monkeypatch):
-    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     approval_id = load(run_id)[3].id
     monkeypatch.setattr(executor, "get_llm", lambda: make_llm([]))
     assert client.post(f"/api/approvals/{approval_id}/decision", json={"action": "approve"}).status_code == 200
@@ -141,20 +150,21 @@ def test_second_decision_is_refused(client, monkeypatch):
 
 
 def test_edit_without_text_is_rejected(client):
-    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    run_id, _, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     approval_id = load(run_id)[3].id
     assert client.post(f"/api/approvals/{approval_id}/decision", json={"action": "edit"}).status_code == 422
 
 
 def test_arabic_reply_is_always_reviewed(client):
-    run_id, status, _ = run_lead([classify(language="arabic"), QUALIFY_HOT, draft(), judge()])
+    run_id, status, _ = run_lead([classify(language="arabic"), QUALIFY_HOT, draft(), judge(), TRANSLATION])
     assert status == "waiting_approval"
     assert "Arabic replies are reviewed" in load(run_id)[3].reason
 
 
 def test_invented_price_is_caught(client):
     reply = "Hi Ayesha! Our social media package is Rs 50,000 a month. Team flowpath"
-    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(reply), judge()])
+    # the fix is attempted, but the model keeps the price, so the price guard still holds it
+    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(reply), judge(), draft(reply), judge()])
     assert status == "waiting_approval"
     assert "price not in knowledge base: Rs 50,000" in load(run_id)[3].reason
 
@@ -295,7 +305,7 @@ def test_failed_run_marks_lead_failed_and_can_be_retried(client, monkeypatch):
 
 
 def test_review_reason_labels_read_naturally(client):
-    run_id, _, _ = run_lead([classify(language="urdu"), QUALIFY_HOT, draft(), judge()])
+    run_id, _, _ = run_lead([classify(language="urdu"), QUALIFY_HOT, draft(), judge(), TRANSLATION])
     assert load(run_id)[3].reason == "Urdu-script replies are reviewed until evals verify accuracy"
 
 
@@ -325,7 +335,7 @@ def test_judge_noise_on_courtesy_and_restatements_is_ignored(client):
 
 
 def test_confidence_is_share_of_supported_claims(client):
-    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=3)])
+    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=3), draft(), judge(unsupported=3)])
     assert status == "waiting_approval"
     approval = load(run_id)[3]
     assert "confidence 0.25 < 0.80" in approval.reason  # 1 of 4 claims needing support is supported
@@ -335,3 +345,57 @@ def test_confidence_is_share_of_supported_claims(client):
 def test_judge_uses_more_reasoning_than_other_steps(client):
     _, _, llm = run_lead([classify(), QUALIFY_HOT, draft(), judge()])
     assert [c["reasoning_effort"] for c in llm.sdk.calls] == ["low", "low", "low", "medium"]
+
+
+# ---------- automatic fix and translation ----------
+
+def test_unsupported_promise_is_removed_and_the_fixed_reply_is_sent(client):
+    fixed = GOOD_REPLY.replace("Would a 15-minute call", "Would a 15-minute call")  # same reply minus the promise
+    run_id, status, llm = run_lead([classify(), QUALIFY_HOT, draft(GOOD_REPLY + " Results guaranteed in 2 weeks!"),
+                                    judge(unsupported=1), draft(fixed), judge()])
+    assert status == "succeeded"
+    run, steps, lead, approval = load(run_id)
+    assert [n for n, _ in steps] == ["intake", "classify", "retrieve", "qualify", "draft", "score", "revise",
+                                     "send", "save_lead"]
+    assert approval is None and lead.reply == fixed and lead.confidence == 1.0
+    with SessionLocal() as db:
+        by = {s.node_id: s for s in db.get(Run, run_id).steps}
+        assert by["score"].output["route"] == "revise"
+        assert by["revise"].output["removed"] == ["made-up promise 0"]
+        assert by["revise"].output["route"] == "auto" and "guaranteed" in by["revise"].output["original_reply"]
+    fix_prompt = llm.sdk.calls[4]["messages"][-1]["content"]
+    assert "Remove:\n- made-up promise 0" in fix_prompt and llm.sdk.calls[4]["model"] == "openai/gpt-oss-120b"
+
+
+def test_invented_price_is_removed_automatically(client):
+    reply = "Hi Ayesha! Our social media package is Rs 50,000 a month. Would a call work? Team flowpath"
+    fixed = "Hi Ayesha! A team member will confirm the fee after a short audit. Would a call work? Team flowpath"
+    run_id, status, llm = run_lead([classify(), QUALIFY_HOT, draft(reply), judge(), draft(fixed), judge()])
+    assert status == "succeeded" and load(run_id)[2].reply == fixed
+    assert "the price Rs 50,000" in llm.sdk.calls[4]["messages"][-1]["content"]
+
+
+def test_a_failed_fix_falls_back_to_a_person(client):
+    from tests.fakes import FakeStatusError
+    run_id, status, _ = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), FakeStatusError(400)])
+    assert status == "waiting_approval"
+    run, steps, lead, approval = load(run_id)
+    assert ("revise", StepStatus.succeeded) in steps  # the step records the error but doesn't fail the run
+    assert "unsupported claims: made-up promise 0" in approval.reason and lead.reply == GOOD_REPLY
+
+
+def test_held_urdu_reply_is_translated_for_the_owner(client):
+    run_id, status, llm = run_lead([classify(language="urdu"), QUALIFY_HOT, draft(), judge(), TRANSLATION])
+    assert status == "waiting_approval"
+    run, steps, lead, approval = load(run_id)
+    assert [n for n, _ in steps][-2:] == ["translate", "approval"]
+    assert approval.payload["translation"] == TRANSLATION
+    assert llm.sdk.calls[-1]["model"] == "openai/gpt-oss-20b"  # the cheap model is enough for translation
+
+
+def test_english_held_reply_needs_no_translation(client):
+    payload = {**ENGLISH_LEAD, "message": "Our ads stopped running, please check"}
+    run_id, status, _ = run_lead([classify(intent="existing_client"), draft(), judge()], payload)
+    assert status == "waiting_approval"
+    run, steps, lead, approval = load(run_id)
+    assert "translate" not in [n for n, _ in steps] and approval.payload["translation"] is None

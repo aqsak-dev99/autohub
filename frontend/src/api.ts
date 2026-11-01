@@ -79,6 +79,7 @@ export type Approval = {
       timeline: string | null
     }
     passages: Passage[]
+    translation?: { message_en: string; reply_en: string } | null
   }
 }
 

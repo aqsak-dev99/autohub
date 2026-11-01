@@ -17,7 +17,6 @@ class Settings(BaseSettings):
 
     groq_api_key: str = ""
     groq_text_model: str = "openai/gpt-oss-20b"
-    groq_vision_model: str = "qwen/qwen3.8-27b"
 
     # run engine
     run_mode: str = "queue"      # queue (Redis worker) | inline (inside the API process)

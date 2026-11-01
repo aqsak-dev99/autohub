@@ -37,7 +37,7 @@ def preview_rules(body: LeadRules, days: int = Query(7, ge=1, le=90), db: Sessio
     rows = db.execute(
         select(RunStep.run_id, RunStep.node_id, RunStep.output).join(Run)
         .where(Run.automation_id == automation.id, Run.created_at >= since,
-               RunStep.node_id.in_(["classify", "score"]))
+               RunStep.node_id.in_(["classify", "score", "revise"]))
     ).all() if automation else []
 
     facts: dict = {}
@@ -51,9 +51,11 @@ def preview_rules(body: LeadRules, days: int = Query(7, ge=1, le=90), db: Sessio
     for run_id, f in facts.items():
         if "score" not in f:  # spam, or failed before a reply was written
             continue
+        # after an automatic fix, the decision was made on the fixed reply
+        decided = f["revise"] if f.get("revise", {}).get("claims") is not None else f["score"]
         replies += 1
-        before = bool(replay_route(f.get("classify", {}), f["score"], current))
-        after = replay_route(f.get("classify", {}), f["score"], body)
+        before = bool(replay_route(f.get("classify", {}), decided, current))
+        after = replay_route(f.get("classify", {}), decided, body)
         review_now += before
         review_new += bool(after)
         who = {"name": names.get(run_id, "Customer"), "language": f.get("classify", {}).get("language"),

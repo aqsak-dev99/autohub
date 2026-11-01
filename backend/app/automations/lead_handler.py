@@ -90,6 +90,11 @@ class Judgement(BaseModel):
     language_matches: bool
 
 
+class Translation(BaseModel):
+    message_en: str = Field(description="The customer's message in plain English")
+    reply_en: str = Field(description="The drafted reply in plain English")
+
+
 NEEDS_SUPPORT = {"fact_about_flowpath", "commitment"}
 
 
@@ -165,6 +170,20 @@ List every claim in the reply and label its kind:
 
 supported: true only if the passages back it up. restates_customer and courtesy are always supported.
 language_matches: the reply is written in {language}, matching the customer's message."""
+
+
+REVISE_PROMPT = """You fix a reply before it is sent to a customer of flowpath, a marketing studio.
+
+A fact check found statements in the reply that flowpath's content doesn't support. Rewrite the reply so that:
+- every listed statement is removed, or replaced with "a team member will confirm this" if the customer asked
+  about it directly
+- nothing else changes: same language and style ({language}), same greeting, facts, next step and sign-off
+- no new facts, prices, promises or dates are added
+Use ONLY the passages for anything you keep. Return the fixed reply and the ids of the passages you used."""
+
+TRANSLATE_PROMPT = """Translate for the owner of flowpath, who will review this reply before it is sent.
+Give the customer's message and the drafted reply in plain, natural English. Translate faithfully: keep
+every number, price and promise exactly as written, and don't add, soften or explain anything."""
 
 
 @register
@@ -251,21 +270,24 @@ class LeadHandler(BaseAutomation):
             ).parsed
             s.output = d
 
-        # 6. score: an LLM judge checks grounding, then code applies the routing rules
-        with ctx.step("score") as s:
-            j: Judgement = s.llm_json(
+        owner = get_rules(ctx.db, settings)  # the Rules page; env values are the defaults
+        known_text = kb.full_text() + "\n" + inbound.message  # the customer's own amounts aren't invented
+
+        def judge(s, reply: str) -> Judgement:
+            return s.llm_json(
                 [{"role": "system", "content": JUDGE_PROMPT.format(language=language_name)},
                  {"role": "user", "content": f"Passages:\n{passages_text}\n\nCustomer message:\n{inbound.message}"
-                                             f"\n\nReply to check:\n{d.reply}"}],
+                                             f"\n\nReply to check:\n{reply}"}],
                 # reasoning shares the output budget with the JSON answer, so give it room: a cut-off
                 # answer is invalid JSON (found in testing on long Arabic and English replies)
                 Judgement, max_tokens=3000, reasoning_effort="medium",
             ).parsed
+
+        def decide(j: Judgement, reply: str) -> dict:
+            """Code, not the model, decides: same facts in, same route out."""
             confidence, unsupported = grounding(j)
-            # amounts the customer gave (their own budget) aren't invented, so they're allowed too
-            price_issues = rules.unsupported_prices(d.reply, kb.full_text() + "\n" + inbound.message)
-            owner = get_rules(ctx.db, settings)  # the Rules page; env values are the defaults
-            review_reasons = rules.route_reply(
+            price_issues = rules.unsupported_prices(reply, known_text)
+            reasons = rules.route_reply(
                 judge_confidence=confidence, threshold=owner.auto_send_confidence, grounded=not unsupported,
                 unsupported_claims=unsupported, language_matches=j.language_matches,
                 language=c.language, review_languages=set(owner.review_languages),
@@ -273,10 +295,51 @@ class LeadHandler(BaseAutomation):
                 check_prices=owner.review_price_not_on_site, check_existing_client=owner.review_existing_client,
                 check_unoffered_service=owner.review_unoffered_service,
             )
-            route = "review" if review_reasons else "auto"
-            lead.confidence = confidence
-            s.output = {"claims": j.claims, "language_matches": j.language_matches, "confidence": confidence,
-                        "price_issues": price_issues, "route": route, "reasons": review_reasons}
+            return {"claims": j.claims, "language_matches": j.language_matches, "confidence": confidence,
+                    "unsupported": unsupported, "price_issues": price_issues,
+                    "route": "review" if reasons else "auto", "reasons": reasons}
+
+        # 6. score: an LLM judge labels every claim, then code applies the routing rules
+        with ctx.step("score") as s:
+            verdict = decide(judge(s, d.reply), d.reply)
+            fixable = verdict["unsupported"] or verdict["price_issues"]
+            s.output = {**verdict, "route": "revise" if fixable else verdict["route"]}
+
+        # 7. revise: remove what the check couldn't back up, check again, and decide on the new reply.
+        # One attempt only; if anything is still unsupported, a person sees it.
+        if fixable:
+            remove = verdict["unsupported"] + [f"the price Rs {p:,}" for p in verdict["price_issues"]]
+            with ctx.step("revise", {"remove": remove}) as s:
+                try:
+                    fixed: Draft = s.llm_json(
+                        [{"role": "system", "content": REVISE_PROMPT.format(language=language_name)},
+                         {"role": "user", "content": f"Passages:\n{passages_text}\n\nCustomer message:\n"
+                                                     f"{inbound.message}\n\nReply:\n{d.reply}\n\nRemove:\n- "
+                                                     + "\n- ".join(remove)}],
+                        Draft, model=settings.groq_draft_model, temperature=0.2, max_tokens=900,
+                    ).parsed
+                    again = decide(judge(s, fixed.reply), fixed.reply)
+                    s.output = {**again, "removed": remove, "original_reply": d.reply, "reply": fixed.reply}
+                    d, verdict = fixed, again
+                except Exception as exc:  # the fix is a bonus: if it fails, the original goes to a person
+                    s.output = {**verdict, "removed": [], "error": f"{type(exc).__name__}: {exc}"[:300]}
+
+        review_reasons, route, confidence = verdict["reasons"], verdict["route"], verdict["confidence"]
+        lead.confidence = confidence
+
+        # 8. translate: the owner may not read Urdu or Arabic, but must understand what they approve
+        translation = None
+        if route == "review" and c.language not in {"english", "other"}:
+            with ctx.step("translate") as s:
+                try:
+                    translation = s.llm_json(
+                        [{"role": "system", "content": TRANSLATE_PROMPT},
+                         {"role": "user", "content": f"Customer message:\n{inbound.message}\n\nReply:\n{d.reply}"}],
+                        Translation, max_tokens=1200,
+                    ).parsed.model_dump()
+                    s.output = translation
+                except Exception as exc:  # approving without a translation is still possible
+                    s.output = {"error": f"{type(exc).__name__}: {exc}"[:300]}
 
         if route == "review":
             with ctx.step("approval", {"reasons": review_reasons}) as s:
@@ -295,6 +358,7 @@ class LeadHandler(BaseAutomation):
                                           "monthly_budget_pkr": q.monthly_budget_pkr, "budget_band": band,
                                           "timeline": q.timeline},
                         "passages": [{"id": p.id, "label": p.label, "url": p.url, "score": sc} for p, sc in hits],
+                        "translation": translation,
                     },
                     output={"lead_id": lead.id, "route": "review", "temperature": temperature},
                 )

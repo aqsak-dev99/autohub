@@ -25,7 +25,7 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Trade-off:** No built-in graph checkpointing; pausing for humans is handled explicitly (decision 10).
 
 ## 5. Groq, with `openai/gpt-oss-20b` as the default text model
-**Decision:** Groq for inference; `gpt-oss-20b` for text, a Qwen vision model for documents, both set in config.
+**Decision:** Groq for inference; `gpt-oss-20b` for text, set in config. (A Qwen vision model was configured for the Document Extractor until it was dropped, decision 60.)
 **Why:** Groq is fast and OpenAI-compatible, which keeps the client simple. The original plan was Llama 3.3 70B, but Groq moved it to enterprise-only pricing during the build, so a self-serve key can't use it. `gpt-oss-20b` is available, cheap ($0.075 / $0.30 per 1M tokens) and supports JSON mode. Reasoning effort is set to `low` to keep latency down.
 **Trade-off:** Provider model lineups change. Handled by keeping model ids in config and by decision 9.
 
@@ -242,6 +242,18 @@ Someone who messages twice is one prospect; the overview lists their best-scorin
 ## 57. Rules belong to the owner, with a preview before saving
 **Decision:** The routing switches (auto-send confidence, languages to review, prices not on the site, existing clients, unoffered services) are saved in the database (`app_settings`) and read on every run; environment variables are only the defaults. Three checks can't be switched off: unsupported claims, a reply in the wrong language, an unsupported customer language. `POST /api/rules/preview` replays the routing over the last 7 days from what each run recorded (classify and score outputs) and reports who would have been answered alone or sent to the owner.
 **Why:** How cautious to be is a business decision, so the business should make it without a redeploy. The preview turns a scary setting into an informed one, and it's free and instant because routing is pure code over saved facts (decisions 19 and 32), not another model call. The locked checks are the failures nobody would notice until a customer did.
+
+## 58. Fix unsupported claims automatically, once, then re-check
+**Decision:** When the fact check finds a claim the knowledge base doesn't support, or the price guard finds an invented price, a `revise` step asks the draft model to remove exactly those statements (or replace them with "a team member will confirm this") and change nothing else. The fixed reply goes through the same judge and the same routing code again. One attempt only: if anything is still unsupported, or the fix call fails, the original reply goes to the owner with the reason. The run records both versions and what was removed.
+**Why:** Most held replies were good replies with one overreaching sentence ("your budget is perfect!"). Sending all of them to a person wasted the owner's time; sending them as they were would put a promise in a customer's inbox. Removing the sentence and re-checking keeps the safety guarantee (nothing unsupported is ever auto-sent, because the second check uses the same rules) while more customers get an instant answer. A single attempt keeps cost and latency bounded and avoids a model arguing with itself.
+
+## 59. Translate held replies for the owner
+**Decision:** When a reply in Urdu, Roman Urdu or Arabic is held, a `translate` step adds a faithful English version of the customer's message and the draft to the approval, using the cheaper model. A failed translation doesn't block the approval. The dashboard notes when the owner has edited the draft after the translation was made.
+**Why:** An owner can't responsibly approve something they can't read, and the review languages are exactly the ones an English-reading owner may not. Translating only held replies keeps the cost to the cases a person actually looks at.
+
+## 60. One automation done well instead of three half-done
+**Decision:** The Document Extractor (planned Phase 3) was removed from the registry, models, settings and docs before it was built; on startup, retired automations are deleted if they never ran, or hidden if they have history. The System Check now verifies the two models actually used.
+**Why:** With the deadline close, a deployed, evaluated Lead Handler shows more than a second automation without evals. A listed automation that fails with "no implementation" would also make the hub look unfinished. The run engine stays general: adding an automation is still a new class plus a registry entry.
 
 ## Known trade-offs to revisit
 - **`create_all` instead of migrations.** Fine while the schema is changing daily (Phase 2 needed a one-time database reset to add lead columns); Alembic should be added before deploying so schema changes are versioned.

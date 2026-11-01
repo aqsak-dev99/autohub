@@ -5,9 +5,9 @@ import { api } from '../api'
 import { LiveFlow } from '../components/LiveFlow'
 import { ReviewCard } from '../components/ReviewCard'
 import { TryIt } from '../components/TryIt'
-import { Avatar, ErrorBox, Kpi } from '../components/ui'
+import { Avatar, ErrorBox } from '../components/ui'
 import { OWNER_NAME } from '../config'
-import { ago, BANDS, usd } from '../format'
+import { ago, usd } from '../format'
 import { channelLabel, friendlyReason, greeting, language, rupeesFromUsd, statusText, wants } from '../plain'
 import { useTech } from '../tech'
 
@@ -26,7 +26,6 @@ export default function Home() {
   const w = week.data
   const m = month.data
   const active = live.data?.active.length ?? 0
-  const bestBand = w?.hot.map((h) => h.budget_band).find(Boolean)
 
   return (
     <>
@@ -38,6 +37,12 @@ export default function Home() {
               ? <>Your assistant answered <b style={{ color: 'var(--text)' }}>{today.received - today.spam} customer{today.received - today.spam === 1 ? '' : 's'}</b> today.{' '}</>
               : <>No messages yet today. </>}
             {pending.length > 0 ? <>{pending.length} {pending.length === 1 ? 'reply is' : 'replies are'} waiting for your OK.</> : <>Nothing is waiting for you.</>}
+            {w && w.hot_leads > 0 && <> {w.hot_leads} hot lead{w.hot_leads === 1 ? '' : 's'} this week.</>}
+            {tech && w && m && (
+              <span className="mono faint" style={{ display: 'block', marginTop: 4 }}>
+                7d: {w.runs} runs · median {w.median_run_seconds ?? '—'} s · success {w.success_rate !== null ? Math.round(w.success_rate * 100) : '—'}% · 30d cost {usd(m.cost_usd, 4)} ({rupeesFromUsd(m.cost_usd)}) · {m.tokens.toLocaleString()} tokens
+              </span>
+            )}
           </div>
         </div>
         <button className="btn primary" onClick={() => setTrying(true)}>＋ Try it: send a test message</button>
@@ -47,20 +52,6 @@ export default function Home() {
 
       <div className="home-grid">
         <div className="stack" style={{ gap: 18, minWidth: 0 }}>
-          <div className="kpis">
-            <Kpi label="Customers today" value={today ? today.received - today.spam : '—'}
-              hint={today ? `${today.sent_on_its_own} answered on their own` : undefined}
-              tech={today ? `${today.received} leads · ${today.spam} spam · ${today.asked_you} held` : undefined} />
-            <Kpi label="Average reply time" value={w?.median_run_seconds ? `${Math.round(w.median_run_seconds)} sec` : '—'}
-              hint="Day and night, in 4 languages" tech={w ? `median of ${w.succeeded} runs · 7d` : undefined} />
-            <Kpi label="Hot leads this week" value={w?.hot_leads ?? '—'}
-              hint={bestBand && BANDS[bestBand] ? `Top lead's budget: ${BANDS[bestBand]} a month` : 'Worth calling first'}
-              tech={w ? `score ≥ 70 · ${w.leads} leads total` : undefined} />
-            <Kpi label="Assistant cost this month" value={m ? rupeesFromUsd(m.cost_usd) : '—'}
-              hint={m && m.leads ? `About ${rupeesFromUsd(m.cost_usd / m.leads)} per customer` : undefined}
-              tech={m ? `${usd(m.cost_usd, 4)} · ${m.tokens.toLocaleString()} tokens` : undefined} />
-          </div>
-
           <section className="card flow-card" aria-label="Live view">
             <div className="card-head">
               <span className="pulse-dot" aria-hidden style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--teal-500)', boxShadow: '0 0 0 5px rgba(78,142,162,.18)' }} />

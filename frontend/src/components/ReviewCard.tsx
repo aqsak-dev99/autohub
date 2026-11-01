@@ -57,9 +57,10 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
       <div>
         <h3 style={{ marginBottom: 6 }}>They wrote</h3>
         <div dir="auto" style={{ whiteSpace: 'pre-wrap', fontSize: 14.5 }}>{p.message}</div>
+        {p.translation?.message_en && <div className="translation"><b>In English:</b> {p.translation.message_en}</div>}
         {!compact && (
           <div className="chips" style={{ marginTop: 10 }}>
-            <span className="tag">Wants: {wants({ services: q.services, intent: p.intent })}</span>
+            {wants({ services: q.services, intent: p.intent }) !== '—' && <span className="tag">Wants: {wants({ services: q.services, intent: p.intent })}</span>}
             <span className="tag">Budget: {q.monthly_budget_pkr ? rupees(q.monthly_budget_pkr) : BANDS[q.budget_band] ?? 'Not stated'}</span>
             {q.timeline && <span className="tag">Start: {q.timeline}</span>}
           </div>
@@ -74,6 +75,12 @@ export function ReviewCard({ approval, compact = false, onDone }: { approval: Ap
           <textarea className="field" rows={compact ? 5 : 7} dir="auto" value={reply} onChange={(e) => setReply(e.target.value)} aria-label="Reply" />
         ) : (
           <div dir="auto" style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{pending ? reply : approval.final_payload?.reply ?? p.reply}</div>
+        )}
+        {p.translation?.reply_en && (
+          <div className="translation">
+            <b>In English:</b> {p.translation.reply_en}
+            {edited && <div className="faint" style={{ marginTop: 4 }}>This translation is of the original draft, before your changes.</div>}
+          </div>
         )}
       </div>
 

@@ -5,8 +5,7 @@ One hub where AI automations run, every run traced step by step, with a human in
 **Automations**
 | Automation | Trigger | What it does |
 |---|---|---|
-| Lead Handler | Email, website contact form | Qualifies leads for flowpath (a marketing studio), replies in English, Roman Urdu, Urdu or Arabic from its knowledge base, auto-sends or queues for approval |
-| Document Extractor | File upload | Vision extraction of invoices/receipts → validation → self-correction → human review |
+| Lead Handler | Email, website contact form | Qualifies leads for flowpath (a marketing studio), replies in English, Roman Urdu, Urdu or Arabic from its knowledge base, fact-checks every claim, **removes what it can't back up and re-checks**, then auto-sends or queues for approval (with an English translation for the owner) |
 | Daily Digest | n8n schedule (9 am) | Morning email summary: new and hot leads, replies waiting for review, failed runs, AI cost |
 
 ## Architecture
@@ -16,7 +15,7 @@ flowchart LR
     MAIL[Gmail inbox] -->|polled every minute| N8N[n8n]
     N8N --> API[FastAPI]
     FORM[flowpath contact form] --> API
-    UP[Dashboard upload] --> API
+    DASHT[Dashboard: Try it] --> API
     API --> Q[(Redis queue)]
     Q --> W[Worker: run engine]
     W --> G[Groq LLMs]
@@ -138,7 +137,7 @@ Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
 - [x] Phase 0: Foundation
 - [x] Phase 1: Run engine (tracing, retries, Groq client, cost)
 - [x] Phase 2: Lead Handler agent
-- [ ] Phase 3: Document Extractor
+- [~] Phase 3: Document Extractor: dropped to focus on one automation done well ([decision 60](docs/DECISIONS.md))
 - [x] Phase 4: Channels: email + website form (live), n8n digest
 - [x] Phase 5: Dashboard + React Flow run visualizer
 - [ ] Phase 6: Evals + CI

@@ -1,4 +1,4 @@
-"""The three automations AutoHub ships with, seeded into the DB on startup.
+"""The automations AutoHub ships with, seeded into the DB on startup.
 
 Each `graph` is in React Flow's own shape ({nodes, edges}), so the dashboard
 can render it directly. Node ids here are the same ids the run engine logs
@@ -34,41 +34,23 @@ AUTOMATIONS: list[dict] = [
                 _node("retrieve", "Search knowledge base", 0, 200),
                 _node("qualify", "Qualify + score lead", 0, 300),
                 _node("draft", "Draft reply", 0, 400),
-                _node("score", "Check + route", 0, 500, "decision"),
-                _node("approval", "Human approval", 220, 620, "human"),
-                _node("send", "Send reply", -100, 740),
-                _node("save_lead", "Save lead", 0, 860),
+                _node("score", "Fact-check + route", 0, 500, "decision"),
+                _node("revise", "Remove unsupported claims", 240, 560),
+                _node("translate", "Translate for the owner", 240, 680),
+                _node("approval", "Human approval", 240, 800, "human"),
+                _node("send", "Send reply", -120, 800),
+                _node("save_lead", "Save lead", 0, 920),
             ],
             "edges": [
                 _edge("intake", "classify"), _edge("classify", "retrieve"),
                 _edge("classify", "save_lead", "spam"),
                 _edge("retrieve", "qualify"), _edge("qualify", "draft"), _edge("draft", "score"),
-                _edge("score", "send", "auto"), _edge("score", "approval", "review"),
+                _edge("score", "send", "auto"), _edge("score", "revise", "unsupported"),
+                _edge("score", "translate", "review"), _edge("score", "approval", "review"),
+                _edge("revise", "send", "fixed"), _edge("revise", "translate", "review"),
+                _edge("revise", "approval", "review"), _edge("translate", "approval"),
                 _edge("approval", "send", "approved"), _edge("approval", "save_lead", "rejected"),
                 _edge("send", "save_lead"),
-            ],
-        },
-    },
-    {
-        "slug": "doc_extractor",
-        "name": "Document Extractor",
-        "description": "Extracts structured fields from an uploaded invoice or receipt, validates them, "
-                       "self-corrects once, then escalates to a human if still invalid.",
-        "trigger": "upload",
-        "graph": {
-            "nodes": [
-                _node("upload", "File uploaded", 0, 0, "trigger"),
-                _node("extract", "Vision extraction", 0, 100),
-                _node("validate", "Validate fields", 0, 200, "decision"),
-                _node("repair", "Self-correct with errors", 180, 200),
-                _node("approval", "Human review", 0, 320, "human"),
-                _node("save_doc", "Save document", -180, 320),
-            ],
-            "edges": [
-                _edge("upload", "extract"), _edge("extract", "validate"),
-                _edge("validate", "save_doc", "valid"), _edge("validate", "repair", "invalid"),
-                _edge("repair", "validate", "retry"), _edge("validate", "approval", "still invalid"),
-                _edge("approval", "save_doc"),
             ],
         },
     },
@@ -109,7 +91,16 @@ AUTOMATIONS: list[dict] = [
 
 
 def seed_automations(db: Session) -> None:
-    """Insert missing automations and refresh existing ones (idempotent: safe on every boot)."""
+    """Insert missing automations, refresh existing ones, and drop retired ones (idempotent: safe on every boot).
+
+    A retired automation (e.g. the Document Extractor, never built) is deleted if it has no runs,
+    otherwise disabled so its history stays readable."""
+    current = {spec["slug"] for spec in AUTOMATIONS}
+    for row in db.query(Automation).filter(Automation.slug.notin_(current)).all():
+        if row.runs:
+            row.enabled = False
+        else:
+            db.delete(row)
     for spec in AUTOMATIONS:
         row = db.query(Automation).filter_by(slug=spec["slug"]).one_or_none()
         if row is None:

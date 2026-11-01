@@ -26,7 +26,7 @@ class SystemCheck(BaseAutomation):
         with ctx.step("models") as s:
             # catches a typo'd or retired model name before any automation hits it
             available = {m.id for m in ctx.llm.sdk.models.list().data}
-            wanted = {"text": settings.groq_text_model, "vision": settings.groq_vision_model}
+            wanted = {"text": settings.groq_text_model, "draft": settings.groq_draft_model}
             missing = {role: m for role, m in wanted.items() if m not in available}
             s.output = {"configured": wanted, "missing": missing, "available_count": len(available)}
             if missing:

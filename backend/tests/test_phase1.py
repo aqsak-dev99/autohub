@@ -92,12 +92,12 @@ def test_system_check_succeeds_and_traces_every_step(client):
 
 
 def test_missing_model_fails_run_at_the_right_step(client):
-    llm = make_llm([], models=("openai/gpt-oss-20b",))  # vision model missing
+    llm = make_llm([], models=("openai/gpt-oss-20b",))  # the draft model is missing
     run_id = _new_run("system_check")
     assert executor.execute_run(run_id, llm=llm) == "failed"
     run = _load(run_id)
     assert run.steps[-1].node_id == "models" and run.steps[-1].status == StepStatus.failed
-    assert "qwen" in run.error
+    assert "gpt-oss-120b" in run.error
 
 
 def test_needs_approval_pauses_run_and_creates_approval(client):
@@ -125,7 +125,12 @@ def test_needs_approval_pauses_run_and_creates_approval(client):
 
 
 def test_unimplemented_automation_fails_cleanly(client):
-    run_id = _new_run("doc_extractor")  # registered, but no code yet (Phase 3)
+    from app.models import Automation
+    with SessionLocal() as db:  # in the database, but with no code behind it
+        if not db.query(Automation).filter_by(slug="not_built").one_or_none():
+            db.add(Automation(slug="not_built", name="Not built", description="", trigger="manual", graph={"nodes": [], "edges": []}))
+            db.commit()
+    run_id = _new_run("not_built")
     assert executor.execute_run(run_id, llm=make_llm([])) == "failed"
     assert "no implementation" in _load(run_id).error
 

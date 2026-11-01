@@ -69,7 +69,6 @@ services:
     command: sh -c "npm install --no-audit --no-fund && npm run dev"
     environment:
       API_PROXY_TARGET: http://api:8000    # Vite forwards /api here, so the browser sees one origin
-      HMR_CLIENT_PORT: "443"               # live reload through the Codespaces https tunnel
     ports:
       - "5173:5173"
     depends_on:

@@ -76,8 +76,9 @@ function buildStory(run: RunDetail, approval: Approval | null): StoryItem[] {
 
   const score = by('score')
   if (score) {
-    const s = out<{ claims?: Claim[]; route?: string; reasons?: string[] }>(score)
+    const s = out<{ claims?: Claim[]; route?: string; reasons?: string[]; price_issues?: number[] }>(score)
     const claims = (s.claims ?? []).filter((c) => CHECKED_KINDS.has(c.kind))
+    const prices = s.price_issues ?? []
     items.push({
       key: 'score', icon: '🔍', title: score.status === 'running' ? 'Checking every fact…' : 'Double-checked every fact', steps: [score],
       tone: score.status === 'running' ? 'live' : s.route === 'review' ? 'warn' : live(score),
@@ -88,11 +89,40 @@ function buildStory(run: RunDetail, approval: Approval | null): StoryItem[] {
             <div key={i} className="fact"><span className={c.supported ? 'y' : 'n'}>{c.supported ? '✓' : '✗'}</span>
               <span dir="auto">“{c.text}” <span className="faint">{c.supported ? 'matches your website' : "isn't on your website"}</span></span></div>
           ))}
+          {prices.map((p) => (
+            <div key={p} className="fact"><span className="n">✗</span><span>A price of Rs {p.toLocaleString('en-PK')} <span className="faint">isn't on your website</span></span></div>
+          ))}
+          {s.route === 'revise' && <div className="faint" style={{ marginTop: 6 }}>So it rewrote the reply without it.</div>}
           {s.route === 'review' && <div className="notice" style={{ marginTop: 8 }}>So it held the reply for you to check.</div>}
           {s.route === 'auto' && claims.length > 0 && <div className="faint" style={{ marginTop: 6 }}>Everything checks out.</div>}
         </>
       ),
     })
+  }
+
+  const revise = by('revise')
+  if (revise) {
+    const r = out<{ removed?: string[]; route?: string; unsupported?: string[]; error?: string }>(revise)
+    const fixed = (r.removed?.length ?? 0) > 0 && !r.error
+    items.push({
+      key: 'revise', icon: '🧹', steps: [revise],
+      title: revise.status === 'running' ? 'Removing what it couldn’t back up…' : fixed ? 'Removed what it couldn’t back up' : 'Tried to fix the reply',
+      tone: revise.status === 'running' ? 'live' : fixed && r.route === 'auto' ? '' : 'warn',
+      body: revise.status === 'running' ? undefined : fixed ? (
+        <>
+          {r.removed!.map((x) => <div key={x} className="fact"><span className="n">–</span><span dir="auto" style={{ textDecoration: 'line-through' }}>{x}</span></div>)}
+          <div style={{ marginTop: 6 }}>
+            {(r.unsupported?.length ?? 0) === 0 ? 'Checked again: everything left matches your website.' : 'Checked again, but something still isn’t backed up.'}
+          </div>
+        </>
+      ) : <>It couldn’t rewrite it this time, so the original goes to you.</>,
+    })
+  }
+
+  const translate = by('translate')
+  if (translate && !out<{ error?: string }>(translate).error) {
+    items.push({ key: 'translate', icon: '🌐', title: 'Translated it into English for you', steps: [translate], tone: live(translate),
+      body: 'So you know exactly what you’re approving.' })
   }
 
   const approvalStep = by('approval')
@@ -143,7 +173,9 @@ function techLine(steps: Step[]): string {
 function Chat({ run, lead, approval, showReply }: { run: RunDetail; lead: Lead | null; approval: Approval | null; showReply: boolean }) {
   const name = String(run.input.name ?? '') || String(run.input.contact)
   const channel = String(run.input.channel ?? '')
-  const draft = out<{ reply?: string }>(run.steps.find((s) => s.node_id === 'draft')).reply
+  // after an automatic fix, the fixed reply is the one that counts
+  const revised = out<{ reply?: string }>(run.steps.find((s) => s.node_id === 'revise')).reply
+  const draft = revised ?? out<{ reply?: string }>(run.steps.find((s) => s.node_id === 'draft')).reply
   const reply = approval?.final_payload?.reply ?? lead?.reply ?? draft
   const time = (v: string | null | undefined) => (v ? parseDate(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '')
   const active = run.status === 'queued' || run.status === 'running'

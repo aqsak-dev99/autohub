@@ -7,8 +7,7 @@ Flow visualizer, cost tracking and debugging for free, for every automation.
     Automation 1──* Run 1──* RunStep
                      │
                      ├──* Approval   (human-in-the-loop decisions)
-                     ├──* Lead       (output of the lead handler)
-                     └──* Document   (output of the document extractor)
+                     └──* Lead       (output of the lead handler)
 """
 import enum
 import uuid
@@ -191,21 +190,6 @@ class Lead(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-
-class Document(Base):
-    """An invoice/receipt processed by the document extractor."""
-    __tablename__ = "documents"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
-    filename: Mapped[str] = mapped_column(String(256))
-    content_type: Mapped[str] = mapped_column(String(64))
-    storage_path: Mapped[str] = mapped_column(String(512))
-    extracted: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    validation_errors: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    is_valid: Mapped[bool | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 class InboundMessage(Base):

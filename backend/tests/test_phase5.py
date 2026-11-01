@@ -26,7 +26,7 @@ def run_lead(script):
 def test_overview_counts_runs_leads_and_series(client):
     before = client.get("/api/stats/overview").json()
     run_lead([classify(), QUALIFY_HOT, draft(), judge()])              # auto-sent
-    run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])  # waits for review
+    run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])  # waits for review
     after = client.get("/api/stats/overview").json()
     assert after["runs"] == before["runs"] + 2
     assert after["leads"] == before["leads"] + 2 and after["hot_leads"] >= 2
@@ -38,7 +38,7 @@ def test_overview_counts_runs_leads_and_series(client):
 
 def test_edit_rate_counts_human_changes(client, monkeypatch):
     monkeypatch.setattr(executor, "get_llm", lambda: make_llm([]))
-    run_id = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1)])
+    run_id = run_lead([classify(), QUALIFY_HOT, draft(), judge(unsupported=1), draft(), judge(unsupported=1)])
     approval = next(a for a in client.get("/api/approvals").json() if a["run_id"] == str(run_id))
     client.post(f"/api/approvals/{approval['id']}/decision", json={"action": "edit", "reply": "A different reply."})
     assert client.get("/api/stats/overview").json()["edit_rate"] > 0

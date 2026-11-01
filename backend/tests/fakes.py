@@ -15,7 +15,7 @@ class FakeStatusError(Exception):
 class FakeSDK:
     """Plays back a script: each item is a reply (str or dict → JSON) or an exception to raise."""
 
-    def __init__(self, script, models=("openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b")):
+    def __init__(self, script, models=("openai/gpt-oss-20b", "openai/gpt-oss-120b")):
         self.script = list(script)
         self.calls = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))

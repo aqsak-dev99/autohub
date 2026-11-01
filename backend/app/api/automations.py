@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["automations"])
 
 @router.get("/automations", response_model=list[AutomationOut])
 def list_automations(db: Session = Depends(get_db)):
-    return db.scalars(select(Automation).order_by(Automation.id)).all()
+    return db.scalars(select(Automation).where(Automation.enabled.is_(True)).order_by(Automation.id)).all()
 
 
 @router.get("/automations/{slug}", response_model=AutomationDetail)
