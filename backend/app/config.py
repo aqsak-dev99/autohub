@@ -25,25 +25,8 @@ class Settings(BaseSettings):
     llm_max_retries: int = 3         # attempts per LLM call for 5xx errors and timeouts
     llm_rate_limit_retries: int = 6  # attempts when rate limited (429): waits add up to about a minute
 
-    # WhatsApp: which provider sends and receives
-    whatsapp_provider: str = "meta"   # meta (WhatsApp Cloud API) | twilio
-
-    # Meta WhatsApp Cloud API
-    meta_access_token: str = ""
-    meta_phone_number_id: str = ""
-    meta_app_secret: str = ""         # signs webhooks (X-Hub-Signature-256)
-    meta_verify_token: str = ""       # any secret string you choose; Meta echoes it when you add the webhook
-    meta_graph_version: str = "v23.0"
-    meta_validate_signature: bool = True
-
-    # Twilio (alternative provider)
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_whatsapp_from: str = "whatsapp:+14155238886"   # the sandbox number
-    send_mode: str = "dry_run"        # dry_run (record only) | live (really send through Twilio)
-    live_send_allowlist: str = ""     # comma-separated numbers; if set, live sends go ONLY to these
-    public_base_url: str = ""         # e.g. https://<codespace>-8000.app.github.dev, for Twilio signatures
-    twilio_validate_signature: bool = True
+    # sending
+    send_mode: str = "dry_run"        # dry_run (record only) | live (really send email)
 
     # Email (Gmail): SMTP sends replies, IMAP reads the inbox
     smtp_host: str = "smtp.gmail.com"
@@ -59,7 +42,6 @@ class Settings(BaseSettings):
     email_send_allowlist: str = ""    # comma-separated addresses; if set, live emails go ONLY to these
 
     # daily digest
-    digest_whatsapp_to: str = ""      # your own number, e.g. +923001234567
     digest_email_to: str = ""         # your own email
 
     # lead handler
@@ -67,16 +49,14 @@ class Settings(BaseSettings):
     auto_send_confidence: float = 0.80
     review_languages: str = "urdu,arabic"          # always reviewed until evals prove them reliable
     inbound_api_key: str = ""                      # if set, POST /api/leads/inbound needs header X-AutoHub-Key
+    form_allowed_origins: str = ""                 # comma-separated site origins allowed to post the public contact form
+    form_rate_limit_per_hour: int = 5              # per email address / IP, so the form can't be used to spam
 
     frontend_origin: str = "http://localhost:5173"
 
     @property
     def review_language_set(self) -> set[str]:
         return {x.strip() for x in self.review_languages.split(",") if x.strip()}
-
-    @property
-    def allowlist(self) -> set[str]:
-        return {normalize_phone(x) for x in self.live_send_allowlist.split(",") if x.strip()}
 
     @property
     def email_allowlist(self) -> set[str]:
@@ -87,27 +67,8 @@ class Settings(BaseSettings):
         return bool(self.smtp_username and self.smtp_password)
 
     @property
-    def twilio_configured(self) -> bool:
-        return bool(self.twilio_account_sid and self.twilio_auth_token)
-
-    @property
-    def meta_configured(self) -> bool:
-        return bool(self.meta_access_token and self.meta_phone_number_id)
-
-    @property
-    def whatsapp_configured(self) -> bool:
-        return self.meta_configured if self.whatsapp_provider == "meta" else self.twilio_configured
-
-    @property
     def is_postgres(self) -> bool:
         return self.database_url.startswith("postgresql")
-
-
-def normalize_phone(raw: str) -> str:
-    """'whatsapp:+92 300-1234567' -> '+923001234567'"""
-    raw = raw.strip().removeprefix("whatsapp:")
-    digits = "".join(ch for ch in raw if ch.isdigit())
-    return f"+{digits}" if digits else ""
 
 
 @lru_cache  # read env once, reuse everywhere

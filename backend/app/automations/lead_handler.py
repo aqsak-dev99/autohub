@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.channels import reply_subject, send_reply
 from app.engine.base import BaseAutomation, NeedsApproval, register
+from app.rules_store import get_rules
 from app.engine.context import RunContext
 from app.knowledge import get_kb
 from app.knowledge.flowpath import SERVICE_IDS
@@ -38,7 +39,7 @@ PINNED_PASSAGES = ("services-overview", "faq-0", "process")
 # ---------- input ----------
 
 class LeadIn(BaseModel):
-    channel: Literal["whatsapp", "web_form", "web_chat", "email"]
+    channel: Literal["email", "web_form", "web_chat"]
     contact: str = Field(min_length=1, max_length=128)
     name: str | None = Field(default=None, max_length=128)
     message: str = Field(min_length=1, max_length=4000)
@@ -237,7 +238,7 @@ class LeadHandler(BaseAutomation):
 
         passages_text = "\n\n".join(f"[{p.id}] {p.title}\n{p.text}" for p, _ in hits) or "(no passages found)"
         language_name = rules.LANGUAGE_NAMES[c.language]
-        max_words = 90 if inbound.channel in {"whatsapp", "web_chat"} else 150
+        max_words = 90 if inbound.channel == "web_chat" else 150  # chat replies are read on a phone-sized widget
 
         # 5. draft the reply with the stronger model
         with ctx.step("draft", {"language": c.language, "passages": [p.id for p, _ in hits]}) as s:
@@ -263,11 +264,14 @@ class LeadHandler(BaseAutomation):
             confidence, unsupported = grounding(j)
             # amounts the customer gave (their own budget) aren't invented, so they're allowed too
             price_issues = rules.unsupported_prices(d.reply, kb.full_text() + "\n" + inbound.message)
+            owner = get_rules(ctx.db, settings)  # the Rules page; env values are the defaults
             review_reasons = rules.route_reply(
-                judge_confidence=confidence, threshold=settings.auto_send_confidence, grounded=not unsupported,
+                judge_confidence=confidence, threshold=owner.auto_send_confidence, grounded=not unsupported,
                 unsupported_claims=unsupported, language_matches=j.language_matches,
-                language=c.language, review_languages=settings.review_language_set,
+                language=c.language, review_languages=set(owner.review_languages),
                 price_issues=price_issues, intent=c.intent, wants_unoffered_service=c.wants_unoffered_service,
+                check_prices=owner.review_price_not_on_site, check_existing_client=owner.review_existing_client,
+                check_unoffered_service=owner.review_unoffered_service,
             )
             route = "review" if review_reasons else "auto"
             lead.confidence = confidence

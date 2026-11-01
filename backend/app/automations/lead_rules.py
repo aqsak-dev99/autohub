@@ -114,8 +114,11 @@ def unsupported_prices(reply: str, knowledge_text: str) -> list[int]:
 
 def route_reply(*, judge_confidence: float, threshold: float, grounded: bool, unsupported_claims: list[str],
                 language_matches: bool, language: str, review_languages: set[str], price_issues: list[int],
-                intent: str, wants_unoffered_service: bool) -> list[str]:
-    """Return the reasons a person must review this reply. Empty list means safe to auto-send."""
+                intent: str, wants_unoffered_service: bool, check_prices: bool = True,
+                check_existing_client: bool = True, check_unoffered_service: bool = True) -> list[str]:
+    """Return the reasons a person must review this reply. Empty list means safe to auto-send.
+
+    The check_* switches are the owner's choices on the Rules page; the other checks always apply."""
     reasons: list[str] = []
     if judge_confidence < threshold:
         reasons.append(f"confidence {judge_confidence:.2f} < {threshold:.2f}")
@@ -128,10 +131,28 @@ def route_reply(*, judge_confidence: float, threshold: float, grounded: bool, un
         reasons.append("customer wrote in a language AutoHub doesn't support yet")
     elif language in review_languages:
         reasons.append(f"{LANGUAGE_LABELS[language]} replies are reviewed until evals verify accuracy")
-    if price_issues:
+    if price_issues and check_prices:
         reasons.append("price not in knowledge base: " + ", ".join(f"Rs {p:,}" for p in price_issues))
-    if intent == "existing_client":
+    if intent == "existing_client" and check_existing_client:
         reasons.append("existing client: a person should handle this")
-    if wants_unoffered_service:
+    if wants_unoffered_service and check_unoffered_service:
         reasons.append("asks for a service flowpath doesn't offer")
     return reasons
+
+
+def replay_route(classify: dict, score: dict, rules) -> list[str]:
+    """Re-decide a past reply under different rules, from what its run recorded (no AI calls).
+
+    Used by the Rules page's "what if" preview. `classify` and `score` are the outputs
+    the classify and score steps saved."""
+    unsupported = [c["text"] for c in score.get("claims") or []
+                   if c.get("kind") in {"fact_about_flowpath", "commitment"} and not c.get("supported")]
+    return route_reply(
+        judge_confidence=score.get("confidence") or 0.0, threshold=rules.auto_send_confidence,
+        grounded=not unsupported, unsupported_claims=unsupported,
+        language_matches=score.get("language_matches", True), language=classify.get("language", "other"),
+        review_languages=set(rules.review_languages), price_issues=score.get("price_issues") or [],
+        intent=classify.get("intent", ""), wants_unoffered_service=bool(classify.get("wants_unoffered_service")),
+        check_prices=rules.review_price_not_on_site, check_existing_client=rules.review_existing_client,
+        check_unoffered_service=rules.review_unoffered_service,
+    )

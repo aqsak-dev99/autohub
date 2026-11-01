@@ -63,6 +63,22 @@ services:
       - n8ndata:/home/node/.n8n
       - ./n8n/workflows:/workflows         # exported workflow JSON lives in the repo
 
+  dashboard:
+    image: node:22-alpine                  # no Dockerfile needed for the dev server
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    environment:
+      API_PROXY_TARGET: http://api:8000    # Vite forwards /api here, so the browser sees one origin
+      HMR_CLIENT_PORT: "443"               # live reload through the Codespaces https tunnel
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app
+      - dashboard_modules:/app/node_modules  # keeps Linux node_modules out of your folder
+
 volumes:
   pgdata:
   n8ndata:
+  dashboard_modules:

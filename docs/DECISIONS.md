@@ -66,7 +66,7 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Why:** Each tool does what it's best at. n8n workflows are quick to change and show integration skills; Python keeps the agent logic testable and versioned. Workflow JSON is committed to the repo.
 **Trade-off:** Two systems to run. Docker Compose starts both with one command.
 
-## 14. Twilio WhatsApp sandbox instead of Meta's API
+## 14. Twilio WhatsApp sandbox instead of Meta's API *(superseded by 53)*
 **Decision:** Twilio's sandbox for the demo.
 **Why:** Meta's WhatsApp Business API requires business verification, which can take days. The sandbox works in minutes, and the integration code is nearly identical, so switching later is a config change.
 
@@ -156,11 +156,11 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Decision:** WhatsApp (originally Phase 4) was built before the Document Extractor.
 **Why:** The schedule slipped by three days. Real WhatsApp delivery turns the strongest feature, the Lead Handler, from a dry run into something that replies to a phone, while the extractor was the most standalone piece and the safest to slim down if time ran short.
 
-## 35. Answer Twilio at once, reply later
+## 35. Answer Twilio at once, reply later *(superseded by 53)*
 **Decision:** The webhook checks the signature, records the message, queues a Lead Handler run and returns empty TwiML immediately. The reply is sent later by the worker through Twilio's REST API.
 **Why:** Twilio gives a webhook 15 seconds; four LLM calls can take longer. Replying in the webhook response would make slow runs time out and get retried.
 
-## 36. Verify Twilio's signature, behind a proxy
+## 36. Verify Twilio's signature, behind a proxy *(superseded by 53)*
 **Decision:** Every webhook must carry a valid `X-Twilio-Signature` (HMAC-SHA1 of the URL and parameters with the auth token), compared in constant time. The URL used is `PUBLIC_BASE_URL`, else the proxy's forwarded host, because behind Codespaces or Render the app sees an internal address, not the one Twilio signed. Without a token the webhook refuses to run (503) rather than accept unverified messages.
 **Why:** A public webhook URL is easy to find. Without the check anyone could post fake customer messages and spend the AI budget, or make AutoHub message any number. The implementation was checked against the example in Twilio's documentation.
 
@@ -168,7 +168,7 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Decision:** Each Twilio `MessageSid` is inserted into `inbound_messages` (unique) before a run is created; a second delivery fails that insert and is acknowledged without a run.
 **Why:** Twilio retries webhooks, and a duplicate would mean a second lead and a second reply to the customer. Claiming first, instead of checking first, also holds when two deliveries arrive at the same instant.
 
-## 38. Three locks on sending
+## 38. Three locks on sending (still applies to email: SEND_MODE, credentials, EMAIL_SEND_ALLOWLIST)
 **Decision:** A real WhatsApp message goes out only when `SEND_MODE=live`, Twilio credentials are set, and the number is on `LIVE_SEND_ALLOWLIST` (if one is set). Anything else is a recorded dry run with the reason. A Twilio error fails the step, so the run shows as failed and can be retried.
 **Why:** A system that messages people should be hard to set off by accident: the demo script's made-up numbers and tests never reach a real phone. Plain `httpx` is used instead of the Twilio SDK, since two small HTTP calls don't justify a dependency and are easy to fake in tests.
 
@@ -176,7 +176,7 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 **Decision:** The daily digest's counts, hot leads and costs are built by SQL and a template. The LLM writes one line on what to do first, and is told not to add numbers. If that call fails the digest goes out without the line; if WhatsApp delivery fails it's recorded on the run instead of failing it.
 **Why:** A summary with a wrong number is worse than no summary. The parts that must be right are deterministic, and the part that can be wrong is optional. n8n owns the schedule and watches the outcome (it flags a failed run), which is the job it's best at.
 
-## 40. Meta's Cloud API as the live provider, Twilio kept behind the same interface
+## 40. Meta's Cloud API as the live provider, Twilio kept behind the same interface *(superseded by 53)*
 **Decision:** `WHATSAPP_PROVIDER` picks Meta's WhatsApp Cloud API (default) or Twilio. Both share `send_reply`, the allowlist, the dry-run rules and the duplicate protection; each has its own webhook and signature check (Meta: HMAC-SHA256 of the raw body with the app secret, plus the verify-token handshake).
 **Why:** Twilio's account verification rejected Pakistani phone numbers, by SMS and by voice call. Meta's API is WhatsApp's own, verifies test recipients through WhatsApp rather than SMS, and is what businesses in Pakistan use in production. Because sending and receiving were already isolated in one module, switching provider was a contained change rather than a rewrite. Meta's signature check was confirmed against a signature produced independently with `openssl`.
 
@@ -202,8 +202,48 @@ A running log of the choices behind AutoHub: what was decided, why, and what it 
 
 ---
 
+## 46. The graph is the interface
+The dashboard draws every automation from the graph the backend stores (decision 3), then paints that same graph three ways: a single run (which branch it took, per-step input and output), a heatmap of averages over the last 7 days (latency, cost or failure rate), and a live view while a run is in progress. One picture answers "what happened", "where does time and money go" and "what is it doing now", which is what an ops person actually asks.
+
+## 47. Human wait time is kept off the heatmap
+A reply waiting 22 minutes for approval would make the approval node the "slowest step" and hide the real bottleneck (the draft call). Human nodes are drawn dashed with their own average wait, and the hotspot only ranks machine steps.
+
+## 48. Same-origin proxy instead of CORS
+Vite forwards `/api` to the backend, in Docker and in Codespaces, so the browser only ever talks to one origin. No CORS rules to get wrong, and the same build works behind Render's single domain later.
+
+## 49. Polling, not WebSockets, for live runs
+A run page refetches every 1.2 s only while the run is queued or running, then stops. Runs last seconds, so this is indistinguishable from push for a viewer, and it needs no socket server, sticky sessions or reconnect logic.
+
+## 50. Show the reviewer the evidence, not just the draft
+The approvals screen shows why the reply was held (the rule that fired), each claim the checker extracted with its verdict, and the knowledge passages it was grounded in. A reviewer checks the risky sentence instead of re-reading everything, and edits are stored beside the AI draft so the edit rate measures AI quality over time.
+
+## 51. No UI or chart library (still true after the redesign)
+Plain CSS and one hand-written SVG bar chart. The pages are tables, panels and one graph; a component kit would add weight and make it look like every other template. Status colours also differ by line style (solid, dashed), not only hue.
+
+## 52. Hot leads show one row per person
+Someone who messages twice is one prospect; the overview lists their best-scoring lead once so the list isn't padded with repeats.
+
+## 53. WhatsApp removed; email and the website form are the live channels
+**Decision:** The WhatsApp channel (Meta Cloud API and Twilio, decisions 14, 35–40) was taken out of AutoHub. Customers now reach the Lead Handler by email (the inbox poll) and through a public contact form on flowpath's site (`POST /api/forms/contact`), and both get email replies. The WhatsApp code is kept in a separate archive for a later project.
+**Why:** Meta locked the test account and requires business verification before any message is sent, and verification needs documents for a registered business, which a concept agency doesn't have. Keeping a channel that can never go live would add code, settings and tests that only say "pending". Email and the form can be tried by anyone, including an interviewer. Because every send already went through one `send_reply` function and every message through one intake (`app/intake.py`), the removal touched no AI logic; a new channel is another branch in `channels.py` plus an intake route.
+
+## 54. A public form needs its own protections
+**Decision:** The contact form is unauthenticated (a browser posts it), so it gets: an origin allowlist (`FORM_ALLOWED_ORIGINS`), a hidden honeypot field that bots fill in and people never see (answered with a fake success), a rate limit per email address (from the database) and per IP (in memory), and a fingerprint of address + message so a double-click starts one run. The server-to-server intake keeps its `X-AutoHub-Key`.
+**Why:** Every form submission costs AI calls and sends an email. Without these, a bot could spend the Groq budget or use flowpath's address to email strangers. A CAPTCHA would add a third-party script and friction for real customers, which isn't worth it at this traffic.
+
+## 55. Designed for the business owner; engineering behind one switch
+**Decision:** The dashboard was redesigned around the person who would pay for it: plain language ("Asks you first", "Double-checks every fact"), rupees instead of dollars, a suggested next step on every conversation. A single **Technical details** switch adds the engineering view to every screen (models, tokens, latency, raw step data, run graphs, heatmaps) and reveals the run list and heatmap pages. The first version (decisions 46–51) looked like an engineer's monitoring console.
+**Why:** An automation tool earns trust by being understandable to the owner, not by showing tokens. Keeping the depth one click away (rather than in a separate app) means the same screen answers "what happened with this customer?" and "why did that step take 1.2 s?", and makes the engineering easy to show without cluttering the product.
+
+## 56. The live canvas is the home page
+**Decision:** Home is a React Flow canvas of the Lead Handler in business terms, fed by `GET /api/stats/live`: customers being answered appear as avatars on the step they're at, edges into busy steps animate, and the "Asks you first" node carries the count of replies waiting. Engine steps are grouped into business steps (intake + classify = "Reads the message").
+**Why:** It shows what the product does in one glance, which a table of runs never does, and it's the most memorable screen for a demo. Grouping keeps the owner's picture simple while the technical graph (decision 46) keeps every real step.
+
+## 57. Rules belong to the owner, with a preview before saving
+**Decision:** The routing switches (auto-send confidence, languages to review, prices not on the site, existing clients, unoffered services) are saved in the database (`app_settings`) and read on every run; environment variables are only the defaults. Three checks can't be switched off: unsupported claims, a reply in the wrong language, an unsupported customer language. `POST /api/rules/preview` replays the routing over the last 7 days from what each run recorded (classify and score outputs) and reports who would have been answered alone or sent to the owner.
+**Why:** How cautious to be is a business decision, so the business should make it without a redeploy. The preview turns a scary setting into an informed one, and it's free and instant because routing is pure code over saved facts (decisions 19 and 32), not another model call. The locked checks are the failures nobody would notice until a customer did.
+
 ## Known trade-offs to revisit
 - **`create_all` instead of migrations.** Fine while the schema is changing daily (Phase 2 needed a one-time database reset to add lead columns); Alembic should be added before deploying so schema changes are versioned.
-- **Partial authentication.** Lead intake can require an `X-AutoHub-Key` header (`INBOUND_API_KEY`) and the WhatsApp webhook requires Twilio's signature; the dashboard and approval endpoints are still open and need auth before public deployment. Making the codespace port public for Twilio exposes them meanwhile.
-- **WhatsApp test-number limits.** Free-form replies and the digest only reach numbers that messaged the business in the last 24 hours, and a test number can only message its registered recipients. Production needs a verified business number and approved message templates. The temporary Meta access token expires within about a day; a system-user token removes that.
+- **Partial authentication.** Server-to-server intake can require an `X-AutoHub-Key` header (`INBOUND_API_KEY`) and the public form is rate limited, but the dashboard and approval endpoints are still open (anyone with the URL can approve a reply) and need a login before public deployment.
 - **Prices hard-coded.** The pricing table must be updated when Groq changes rates; unknown models are flagged as unpriced rather than shown as free.

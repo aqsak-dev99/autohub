@@ -5,16 +5,17 @@ One hub where AI automations run, every run traced step by step, with a human in
 **Automations**
 | Automation | Trigger | What it does |
 |---|---|---|
-| Lead Handler | Email, WhatsApp, website form | Qualifies leads for flowpath (a marketing studio), replies in English, Roman Urdu, Urdu or Arabic from its knowledge base, auto-sends or queues for approval |
+| Lead Handler | Email, website contact form | Qualifies leads for flowpath (a marketing studio), replies in English, Roman Urdu, Urdu or Arabic from its knowledge base, auto-sends or queues for approval |
 | Document Extractor | File upload | Vision extraction of invoices/receipts → validation → self-correction → human review |
-| Daily Digest | n8n schedule (9 am) | Morning WhatsApp summary: new and hot leads, replies waiting for review, failed runs, AI cost |
+| Daily Digest | n8n schedule (9 am) | Morning email summary: new and hot leads, replies waiting for review, failed runs, AI cost |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    WA[Twilio WhatsApp] --> N8N[n8n]
-    N8N -->|webhooks| API[FastAPI]
+    MAIL[Gmail inbox] -->|polled every minute| N8N[n8n]
+    N8N --> API[FastAPI]
+    FORM[flowpath contact form] --> API
     UP[Dashboard upload] --> API
     API --> Q[(Redis queue)]
     Q --> W[Worker: run engine]
@@ -27,7 +28,7 @@ flowchart LR
 **Core design:** every execution is a `Run` made of `RunStep`s. Each step stores input, output, model, tokens, cost, duration and retry count. Step ids match the node ids in each automation's React Flow graph, so the dashboard can replay any run on its diagram.
 
 ## Stack
-FastAPI · SQLAlchemy · Postgres + pgvector · Redis + RQ · Groq · Gmail (SMTP/IMAP) · WhatsApp Cloud API (Meta) / Twilio · n8n · React + Vite + React Flow · Render
+FastAPI · SQLAlchemy · Postgres + pgvector · Redis + RQ · Groq · Gmail (SMTP/IMAP) · n8n · React + Vite + React Flow · Render
 
 ## Run locally
 ```bash
@@ -60,10 +61,13 @@ Write to the AutoHub Gmail and get a reply in the same thread: setup in [docs/EM
 - Auto-replies, newsletters, bounces and no-reply senders are never answered; only recent unread mail is read.
 - flowpath contact-form leads (`web_form`) get email replies too.
 
-## WhatsApp
-Real messages through Meta's WhatsApp Cloud API (or Twilio, with one setting): setup in [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md).
-- `POST /api/webhooks/meta/whatsapp` and `/twilio/whatsapp`: verify the provider's signature, ignore duplicate deliveries, queue the Lead Handler and answer within milliseconds; the reply follows from the worker.
-- Sending needs `SEND_MODE=live`, provider credentials and (recommended) `LIVE_SEND_ALLOWLIST`; otherwise every send is a recorded dry run.
+## Website contact form
+`POST /api/forms/contact` with `{name, email, message, company?}`: posted by the form on flowpath's site; the visitor gets an email reply in seconds (or after approval).
+- Only origins in `FORM_ALLOWED_ORIGINS` may post it; a hidden honeypot field catches bots; rate limited per email and IP; a double-click starts one run.
+
+## Channels
+Every reply leaves through one function (`send_reply` in `channels.py`) and every message enters through one (`start_lead` in `intake.py`), so a channel is pluggable. WhatsApp was built and tested this way, then removed because Meta only lets verified businesses send ([decision 53](docs/DECISIONS.md)).
+- Sending needs `SEND_MODE=live` and email credentials, and goes only to `EMAIL_SEND_ALLOWLIST` if set; otherwise every send is a recorded dry run.
 - Daily digest: import `n8n/workflows/daily_digest.json` into n8n. Preview the numbers any time at `GET /api/digest/preview`.
 - n8n: http://localhost:5678
 
@@ -87,15 +91,36 @@ backend/app/
   engine/        run engine: step tracer, executor, queue dispatch
   automations/   one module per automation (lead_handler, lead_rules, system_check)
   knowledge/     flowpath's content + BM25 search
-  channels.py    outbound email (Gmail SMTP) and WhatsApp (Meta / Twilio): dry run, live, allowlists; signature checks
+  channels.py    outbound replies (Gmail SMTP): dry run, live, allowlist
+  intake.py      the one entry point that turns a customer message into a run (with dedupe)
   email_inbox.py reads the inbox: parsing, loop guards, dedupe
-  api/webhooks.py  Meta and Twilio WhatsApp webhooks
+  api/forms.py   public contact form: origin check, honeypot, rate limit
+  api/rules.py   the owner's routing rules + "what if" replay over past runs
+  rules_store.py rules saved in the database (env values are the defaults)
 backend/worker.py  Redis worker that executes queued runs
 backend/scripts/   demo_leads.py (sample leads in 4 languages), poll_inbox.py
 backend/tests/   pytest (fake Groq SDK, no key needed)
 n8n/workflows/   daily_digest.json, inbox_check.json: import into n8n
-frontend/        dashboard (Phase 5)
+frontend/        React dashboard: live flow, conversation X-ray, approvals, leads, rules (+ technical views)
 ```
+
+## Dashboard
+`docker compose up` also starts the dashboard on port **5173** (in Codespaces: Ports tab → 5173 → globe icon).
+
+Built for the **business owner**, with the engineering one switch away. Plain words, rupees and next steps by default; flip **Technical details** (top right) and every screen also shows models, tokens, latency, raw step data, run graphs and heatmaps.
+
+| Page | For the owner | With Technical details on |
+|---|---|---|
+| Home | today's customers, reply time, hot leads, cost in rupees; a **live React Flow canvas** where customers appear on the step the assistant is at; replies waiting for an OK | per-step latency and cost on the canvas, link to the heatmap |
+| Conversations → one conversation | the chat, then **how the assistant handled it** step by step (with a replay), the fact check, lead score with reasons, a suggested next step | model / tokens / ms / cost per step, raw input and output, the run graph, run trace |
+| Needs you | why each reply was held (in plain words), the draft to approve, edit or skip, the fact check | confidence, retrieval scores, link to the run |
+| Leads | possible clients sorted by score | reply confidence |
+| Rules | when the assistant may reply alone; **"if these rules had been on last week"** preview | the threshold value and how the replay works |
+| runs, automations | (technical only) | every run of every automation; workflow heatmap by latency, cost or failure rate |
+
+**Try it:** the button on Home lets anyone play a customer (examples in all 4 languages) and watch the reply being built; it's answered as website chat, so nothing is emailed.
+
+Stack: React 19, TypeScript, Vite, @xyflow/react (React Flow), TanStack Query; plain CSS, no UI kit. Without Docker: `cd frontend && npm install && npm run dev` (expects the API on localhost:8000). Owner name, business name and the rupee rate are in `frontend/src/config.ts`.
 
 ## Design decisions
 Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
@@ -114,7 +139,7 @@ Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
 - [x] Phase 1: Run engine (tracing, retries, Groq client, cost)
 - [x] Phase 2: Lead Handler agent
 - [ ] Phase 3: Document Extractor
-- [x] Phase 4: n8n + Twilio WhatsApp
-- [ ] Phase 5: Dashboard + React Flow run visualizer
+- [x] Phase 4: Channels: email + website form (live), n8n digest
+- [x] Phase 5: Dashboard + React Flow run visualizer
 - [ ] Phase 6: Evals + CI
 - [ ] Phase 7: Deploy + demo

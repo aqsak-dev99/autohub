@@ -91,6 +91,18 @@ class Run(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     automation: Mapped[Automation] = relationship(back_populates="runs")
+
+    @property
+    def label(self) -> str | None:
+        """'Ayesha · web_form' for a lead, 'n8n · 24h' for a digest: what the dashboard shows in run lists."""
+        data = self.input or {}
+        who = data.get("name") or data.get("contact")
+        if who:
+            return f"{who} · {data['channel']}" if data.get("channel") else str(who)
+        if data.get("source") or data.get("hours"):
+            return f"{data.get('source', 'manual')} · {data.get('hours', 24)}h"
+        return None
+
     steps: Mapped[list["RunStep"]] = relationship(
         back_populates="run", order_by="RunStep.position", cascade="all, delete-orphan"
     )
@@ -151,7 +163,7 @@ class Lead(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
-    channel: Mapped[str] = mapped_column(String(16))   # whatsapp | web_form | web_chat | email
+    channel: Mapped[str] = mapped_column(String(16))   # email | web_form | web_chat
     contact: Mapped[str] = mapped_column(String(128))  # phone or email
     name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     message: Mapped[str] = mapped_column(Text)
@@ -199,14 +211,27 @@ class Document(Base):
 class InboundMessage(Base):
     """Every message received from a provider, keyed by the provider's own id.
 
-    Twilio retries a webhook if it doesn't get a quick 200, so the same
-    WhatsApp message can arrive twice. The unique external_id makes the
-    second delivery a no-op instead of a second lead and a second reply.
+    The same email can be fetched twice (two polls overlap) and a form can be
+    submitted twice (double-click). The unique external_id makes the second
+    delivery a no-op instead of a second lead and a second reply.
     """
     __tablename__ = "inbound_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    provider: Mapped[str] = mapped_column(String(16))           # meta | twilio
-    external_id: Mapped[str] = mapped_column(String(128), unique=True)  # Meta wamid / Twilio MessageSid
+    provider: Mapped[str] = mapped_column(String(16))           # email | form
+    external_id: Mapped[str] = mapped_column(String(128), unique=True)  # email Message-ID hash / form fingerprint
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AppSetting(Base):
+    """Settings the business owner changes from the dashboard (e.g. the Lead Handler's rules).
+
+    Environment variables stay the defaults; a row here overrides them, so a rule
+    change takes effect on the next message without a redeploy.
+    """
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

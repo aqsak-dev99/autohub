@@ -1,13 +1,14 @@
 """Lead intake, the approval inbox and knowledge-base search.
 
-POST /api/leads/inbound is what flowpath's website (and later the WhatsApp
-webhook) calls. It answers 202 at once; the Lead Handler runs in the worker.
+POST /api/leads/inbound is the server-to-server intake (n8n, scripts, other systems),
+protected by X-AutoHub-Key. The public website form uses /api/forms/contact instead. It answers 202 at once; the Lead Handler runs in the worker.
 """
 import secrets
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -115,3 +116,31 @@ def search_knowledge(q: str = Query(..., min_length=1), limit: int = Query(3, le
         "hits": [{"id": p.id, "label": p.label, "url": p.url, "score": s, "text": p.text}
                  for p, s in kb.search(q, limit=limit)],
     }
+
+
+class ConversationOut(BaseModel):
+    lead: LeadOut | None
+    approval: ApprovalOut | None
+
+
+@router.get("/conversations/{run_id}", response_model=ConversationOut)
+def conversation(run_id: uuid.UUID, db: Session = Depends(get_db)):
+    """The lead and (if any) the approval behind one Lead Handler run: the X-ray page's extra data."""
+    lead = db.scalar(select(Lead).where(Lead.run_id == run_id))
+    approval = db.scalar(select(Approval).where(Approval.run_id == run_id).order_by(Approval.created_at.desc()))
+    return ConversationOut(lead=lead, approval=approval)
+
+
+class TestMessageIn(BaseModel):
+    message: str = Field(min_length=2, max_length=2000)
+    name: str = Field(default="Test customer", max_length=60)
+
+
+@router.post("/test-message", response_model=InboundOut, status_code=202)
+def test_message(body: TestMessageIn, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """'Try it' on the dashboard: the owner plays a customer. Sent as website chat, so the reply
+    is shown on screen and never emailed. (Same protection as the rest of the dashboard.)"""
+    run = create_run(db, "lead_handler", {"channel": "web_chat", "contact": "dashboard-test", "name": body.name,
+                                          "message": body.message})
+    via = dispatch(run.id, background)
+    return InboundOut(run_id=str(run.id), status=run.status.value, dispatched_via=via)

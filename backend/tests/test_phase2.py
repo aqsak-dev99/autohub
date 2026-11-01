@@ -166,7 +166,7 @@ def test_unoffered_service_goes_to_review(client):
 
 
 def test_spam_stops_after_classify(client):
-    payload = {"channel": "whatsapp", "contact": "+920000000000", "message": "You won a free iPhone! bit.ly/x"}
+    payload = {"channel": "web_chat", "contact": "chat-visitor-9", "message": "You won a free iPhone! bit.ly/x"}
     run_id, status, llm = run_lead([classify(intent="spam", confidence=0.97)], payload)
     assert status == "succeeded" and len(llm.sdk.calls) == 1
     _, steps, lead, _ = load(run_id)
@@ -175,7 +175,7 @@ def test_spam_stops_after_classify(client):
 
 
 def test_job_applicant_skips_qualification(client):
-    payload = {"channel": "whatsapp", "contact": "+921111111111",
+    payload = {"channel": "web_chat", "contact": "chat-visitor-8",
                "message": "Kya aap ke paas video editor ki job hai? Main 2 saal se Reels edit kar raha hoon"}
     reply = "Shukriya! Hum Video editor hire kar rahe hain. Apni CV hello@flowpath.example par bhejein. Team flowpath"
     run_id, status, llm = run_lead([classify(intent="job_applicant", language="roman_urdu"), draft(reply), judge()],

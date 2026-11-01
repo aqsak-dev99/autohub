@@ -188,7 +188,7 @@ def lead_payload(parsed: ParsedEmail) -> dict:
 
 def poll_inbox(db, background, settings: Settings) -> PollResult:
     """Fetch unread mail, start a run per real enquiry, then mark everything handled as read."""
-    from app.api.webhooks import start_lead  # shared with the WhatsApp webhooks
+    from app.intake import start_lead  # shared with the website contact form
 
     result = PollResult()
     handled: list[bytes] = []

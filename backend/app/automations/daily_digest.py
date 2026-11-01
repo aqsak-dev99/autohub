@@ -1,13 +1,12 @@
-"""Daily Digest: a morning WhatsApp summary of the last 24 hours for flowpath's team.
+"""Daily Digest: a morning email summary of the last 24 hours for flowpath's team.
 
     schedule (n8n, 9 am) → collect → summarize → deliver
 
 Code builds every number in the message; the LLM only writes one line on
 what needs attention, from those numbers, and is told not to add any. If
 the LLM call fails, the digest still goes out without that line. It goes to
-DIGEST_EMAIL_TO and/or DIGEST_WHATSAPP_TO; if a delivery fails (WhatsApp only
-delivers within 24 hours of your last message) the text is still saved on
-the run for n8n or the dashboard to show.
+DIGEST_EMAIL_TO; if delivery fails the text is still saved on the run for
+n8n or the dashboard to show.
 """
 from __future__ import annotations
 
@@ -157,7 +156,7 @@ class DailyDigest(BaseAutomation):
 
         with ctx.step("deliver") as s:
             deliveries = []
-            targets = [("whatsapp", settings.digest_whatsapp_to), ("email", settings.digest_email_to)]
+            targets = [("email", settings.digest_email_to)]
             subject = text.splitlines()[0]  # "flowpath digest · Fri 30 Oct"
             for channel, to in targets:
                 if not to:
@@ -165,12 +164,12 @@ class DailyDigest(BaseAutomation):
                 try:
                     deliveries.append(send_reply(channel, to, text, settings, subject=subject))
                 except DeliveryError as exc:
-                    # best effort: e.g. WhatsApp only delivers within 24 h of your last message to it
+                    # best effort: the digest text is still saved on the run
                     deliveries.append({"channel": channel, "delivered": False, "mode": "error", "code": exc.code,
                                        "note": str(exc)})
             if not deliveries:
                 deliveries.append({"delivered": False, "mode": "dry_run",
-                                   "note": "set DIGEST_EMAIL_TO and/or DIGEST_WHATSAPP_TO"})
+                                   "note": "set DIGEST_EMAIL_TO"})
             s.output = {"deliveries": deliveries}
 
         delivered = any(d.get("delivered") for d in deliveries)

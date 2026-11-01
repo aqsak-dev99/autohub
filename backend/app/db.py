@@ -49,6 +49,6 @@ def init_db() -> None:
 # create_all never changes a table that already exists. Until Alembic arrives (before deploy),
 # column changes to existing tables go here. Each must be safe to run on every start.
 SCHEMA_PATCHES = [
-    # Meta's message ids (wamid...) are longer than Twilio's 34-character ids
+    # room for long message ids (widened from 64 when longer provider ids appeared)
     "ALTER TABLE inbound_messages ALTER COLUMN external_id TYPE varchar(128)",
 ]

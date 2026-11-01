@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 import app.automations  # noqa: F401  (registers automation implementations)
-from app.api import automations, digest, email, health, leads, runs, webhooks
+from app.api import automations, digest, email, forms, health, leads, rules, runs, stats
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.registry import seed_automations
@@ -29,13 +29,14 @@ app = FastAPI(
     title="AutoHub",
     description="One hub for AI automations: every run traced step by step, "
                 "with human approval when the AI isn't sure.",
-    version="0.4.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    # the dashboard, plus flowpath's site, which posts the public contact form from the browser
+    allow_origins=[settings.frontend_origin] + [o.strip() for o in settings.form_allowed_origins.split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,6 +51,8 @@ app.include_router(health.router)
 app.include_router(automations.router)
 app.include_router(runs.router)
 app.include_router(leads.router)
-app.include_router(webhooks.router)
+app.include_router(forms.router)
 app.include_router(digest.router)
 app.include_router(email.router)
+app.include_router(stats.router)
+app.include_router(rules.router)

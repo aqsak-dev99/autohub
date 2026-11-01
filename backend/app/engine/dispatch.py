@@ -1,7 +1,7 @@
 """Hands work to the Redis worker, with a fallback.
 
 Why a queue at all: LLM calls take seconds. Running them inside the request
-would make webhooks (Twilio, n8n, flowpath) time out. The API answers
+would make callers (the website form, n8n, the inbox poll) time out. The API answers
 instantly; the worker does the slow part.
 
 Fallback: if Redis is down, the job runs in a FastAPI background task

@@ -24,7 +24,7 @@ AUTOMATIONS: list[dict] = [
     {
         "slug": "lead_handler",
         "name": "Lead Handler",
-        "description": "Qualifies an incoming WhatsApp or website lead for flowpath, drafts a grounded reply "
+        "description": "Qualifies an incoming email or website lead for flowpath, drafts a grounded reply "
                        "in the customer's language, and auto-sends it or queues it for human approval.",
         "trigger": "webhook",
         "graph": {
@@ -75,7 +75,7 @@ AUTOMATIONS: list[dict] = [
     {
         "slug": "daily_digest",
         "name": "Daily Digest",
-        "description": "n8n-scheduled morning WhatsApp summary: new leads, hot leads, replies waiting for "
+        "description": "n8n-scheduled morning email summary: new leads, hot leads, replies waiting for "
                        "review, failed runs and AI cost. Code builds the numbers; the AI writes one advice line.",
         "trigger": "schedule",
         "graph": {
@@ -83,7 +83,7 @@ AUTOMATIONS: list[dict] = [
                 _node("schedule", "n8n schedule (9am)", 0, 0, "trigger"),
                 _node("collect", "Collect stats", 0, 100),
                 _node("summarize", "Summarize with AI", 0, 200),
-                _node("deliver", "Send via email/WhatsApp", 0, 300),
+                _node("deliver", "Send by email", 0, 300),
             ],
             "edges": [
                 _edge("schedule", "collect"), _edge("collect", "summarize"), _edge("summarize", "deliver"),

@@ -43,6 +43,7 @@ class RunStepOut(ORM):
 class RunOut(ORM):
     id: uuid.UUID
     automation_id: int
+    label: str | None = None  # human-readable: who or what the run was about
     status: str
     total_tokens: int
     total_cost_usd: float

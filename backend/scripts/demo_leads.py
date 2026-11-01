@@ -19,31 +19,31 @@ LEADS = [
         "message": "Hi, we run a skincare brand online and want to grow Instagram and run Meta ads. Budget is around "
                    "Rs 300,000 a month and we'd like to start within two weeks. Can we get on a call?"}),
     ("Roman Urdu, price question", {
-        "channel": "whatsapp", "contact": "+923001110001", "name": "Usman",
+        "channel": "web_chat", "contact": "chat-visitor-1", "name": "Usman",
         "message": "Assalam o alaikum, aap log social media aur ads ka kitna charge karte hain? Mera restaurant hai "
                    "DHA mein"}),
     ("Mixed English / Roman Urdu", {
-        "channel": "whatsapp", "contact": "+923001110002", "name": "Bilal",
+        "channel": "email", "contact": "bilal@example.com", "name": "Bilal",
         "message": "Hello, hamari housing society ke liye Google pe ranking chahiye, budget 1.5 lakh monthly hai, "
                    "urgent nahi hai"}),
     ("Urdu script", {
-        "channel": "whatsapp", "contact": "+923001110003", "name": "Sana",
+        "channel": "web_form", "contact": "sana@example.com", "name": "Sana",
         "message": "السلام علیکم، مجھے اپنے کپڑوں کے برانڈ کے لیے انسٹاگرام مارکیٹنگ چاہیے۔ آپ کی فیس کیا ہے؟"}),
     ("Arabic, client abroad", {
         "channel": "web_form", "contact": "khalid@example.com", "name": "Khalid",
         "message": "مرحبا، نحن متجر عطور في دبي ونرغب في إعلانات على تيك توك وإنستغرام. هل تعملون مع عملاء خارج "
                    "باكستان؟"}),
     ("Job applicant (Roman Urdu)", {
-        "channel": "whatsapp", "contact": "+923001110004", "name": "Hamza",
+        "channel": "web_chat", "contact": "chat-visitor-4", "name": "Hamza",
         "message": "Kya aap ke paas video editor ki job hai? Main 2 saal se Reels edit kar raha hoon"}),
     ("Service flowpath doesn't offer", {
-        "channel": "web_chat", "contact": "gym-owner@example.com", "name": "Fahad",
+        "channel": "web_form", "contact": "fahad@example.com", "name": "Fahad",
         "message": "Can you build a mobile app for our gym?"}),
     ("Existing client, urgent", {
-        "channel": "whatsapp", "contact": "+923001110005", "name": "Mehreen",
+        "channel": "email", "contact": "mehreen@example.com", "name": "Mehreen",
         "message": "Our Meta ads stopped running since yesterday, please check urgently"}),
     ("Spam", {
-        "channel": "whatsapp", "contact": "+923001110006",
+        "channel": "web_form", "contact": "winner@example.com",
         "message": "Congratulations! You have won a free iPhone 17, click bit.ly/claim-now to get it"}),
 ]
 
