@@ -4,7 +4,9 @@ An AI assistant for **flowpath**, a small marketing studio in Lahore. It answers
 
 Under the hood it's a small automation hub: every execution is a traced **run** of **steps** (input, output, model, tokens, cost, duration, retries), shown live on a React Flow canvas.
 
-**Live demo:** _link coming after deploy_ · **Explore the demo** needs no sign-up
+**Live demo:** [autohub-0igb.onrender.com](https://autohub-0igb.onrender.com) · choose **Explore the demo** (no sign-up). The free server sleeps when idle, so the first load can take up to a minute.
+
+**Try the full loop:** send an enquiry from the contact page on [flowpath's site](https://flowpath-sigma.vercel.app/contact) (there's a **Try a sample enquiry** button), then watch it arrive in AutoHub's Conversations within seconds.
 
 ## Automations
 | Automation | Trigger | What it does |
@@ -87,7 +89,7 @@ The AI never writes a task. Code builds the candidates from the database (replie
 ## Channels
 Every reply leaves through one function (`send_reply` in `channels.py`) and every outside event (an email, a form post, a follow-up scan) enters through one (`start_once` in `intake.py`, deduplicated by a unique id), so channels and triggers are pluggable. WhatsApp was built and tested this way, then removed because Meta only lets verified businesses send ([decision 53](docs/DECISIONS.md)).
 - **Email:** setup in [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md). Auto-replies, newsletters, bounces and no-reply senders are never answered.
-- **Website contact form:** `POST /api/forms/contact`. Only origins in `FORM_ALLOWED_ORIGINS`, a honeypot field, rate limits per email and IP, and a double-click starts one run.
+- **Website contact form:** flowpath's live site ([flowpath-sigma.vercel.app](https://flowpath-sigma.vercel.app)) saves each enquiry in its own database and also posts it to `POST /api/forms/contact`. Only origins in `FORM_ALLOWED_ORIGINS` are accepted, plus a honeypot field, rate limits per email and IP, and a double-click starts one run. On the public demo, replies are shown on the dashboard rather than emailed, and demo visitors see email addresses masked.
 - Sending needs `SEND_MODE=live`; `EMAIL_SEND_ALLOWLIST` limits who can receive while testing. Otherwise every send is a recorded dry run.
 
 ## Reliability
