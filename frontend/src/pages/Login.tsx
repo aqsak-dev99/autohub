@@ -17,10 +17,9 @@ export default function Login() {
   return (
     <div className="login">
       <section className="login-form">
-        <div className="brand"><span className="brand-mark">✦</span>AutoHub <small>· {BUSINESS_NAME}</small></div>
         <div className="login-form-inner">
           <div>
-            <h1>Welcome to AutoHub</h1>
+            <h1>Welcome</h1>
             <p className="muted" style={{ marginTop: 6 }}>{BUSINESS_NAME}’s AI assistant: it answers every customer in seconds, and asks you when it isn’t sure.</p>
           </div>
           {me?.demo_available && (
@@ -41,16 +40,9 @@ export default function Login() {
             <button className="btn" type="submit" style={{ height: 44 }} disabled={!password || login.isPending}>Log in</button>
           </form>
         </div>
-        <p className="foot">A portfolio project · FastAPI · Groq · React Flow</p>
       </section>
       <section className="login-art" aria-hidden>
         <LineArt />
-        <div className="mark"><span className="star">✦</span>AutoHub</div>
-        <div className="points">
-          <span>English · Roman Urdu · Urdu · Arabic</span>
-          <span>Every fact checked</span>
-          <span>You approve what it isn’t sure about</span>
-        </div>
       </section>
     </div>
   )
