@@ -192,13 +192,4 @@ Full log with trade-offs: [docs/DECISIONS.md](docs/DECISIONS.md). Highlights:
 - **BM25, not embeddings.** About 20 short passages; keyword search is exact, explainable and free ([decision 15](docs/DECISIONS.md)).
 - **One automation done well first.** The Lead Handler got evals and a fact check before a second automation was added.
 
-## Roadmap
-- [x] Phase 0: Foundation
-- [x] Phase 1: Run engine (tracing, retries, Groq client, cost)
-- [x] Phase 2: Lead Handler
-- [~] Phase 3: Document Extractor: dropped ([decision 60](docs/DECISIONS.md))
-- [x] Phase 4: Channels: email + website form, n8n digest
-- [x] Phase 5: Dashboard + React Flow run visualizer
-- [x] Phase 6: Evals + CI
-- [x] Phase 7: Deploy: login, migrations, Render blueprint, self-refilling demo
-- [x] Phase 8: Follow-up Nudge, "Today" tasks in the digest, no-double-send guarantees, Postgres in CI
+
