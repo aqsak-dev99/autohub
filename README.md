@@ -8,6 +8,19 @@ Under the hood it's a small automation hub: every execution is a traced **run** 
 
 **Try the full loop:** send an enquiry from the contact page on [flowpath's site](https://flowpath-sigma.vercel.app/contact) (there's a **Try a sample enquiry** button), then watch it arrive in AutoHub's Conversations within seconds.
 
+![AutoHub home: today's numbers, today's top tasks and replies waiting for the owner](docs/screenshots/home.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/live-flow.png" alt="Live canvas: customers appear on the step the assistant is at"><br><sub><b>Live canvas.</b> Each message moves through the steps as it's handled; held replies wait at "Asks you first".</sub></td>
+<td width="50%"><img src="docs/screenshots/needs-you.png" alt="Needs you: a held Urdu reply with an English translation"><br><sub><b>Needs you.</b> Why a reply was held, the draft, and an English translation for replies in Urdu or Arabic.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/screenshots/conversations.png" alt="Conversations in four languages, with lead temperature and status"><br><sub><b>Conversations.</b> Every enquiry in four languages, scored as hot, warm or cold.</sub></td>
+<td width="50%"><img src="docs/screenshots/login.png" alt="Login page with Explore the demo"><br><sub><b>Login.</b> Visitors explore the demo without signing up; the owner logs in.</sub></td>
+</tr>
+</table>
+
 ## Automations
 | Automation | Trigger | What it does |
 |---|---|---|
